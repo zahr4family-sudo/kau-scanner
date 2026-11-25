@@ -1,0 +1,24 @@
+KAU OMR — CHANGELOG PERBAIKAN PAKET PWA
+Versi paket: 3.1.0 (perbaikan deployment dan stabilitas)
+
+1. GitHub Pages: manifest start_url/scope diubah menjadi relatif agar aplikasi berjalan pada repository project pages.
+2. Cloudflare Pages: ditambahkan _headers untuk kebijakan header dasar dan cache file inti.
+3. Service worker: base URL mengikuti scope instalasi; cache versi; navigasi network-first dengan fallback offline; cache library XLSX CDN.
+4. Penyimpanan: localStorage dan IndexedDB kini dicoba secara terpisah; akses localStorage yang gagal tidak menghentikan pemulihan IndexedDB.
+5. Kamera: validasi HTTPS/getUserMedia dan pembersihan stream ketika gagal.
+6. Cetak: penantian aset gambar, jeda render sebelum print, dan cleanup fallback.
+7. Mobile/PWA: metadata aplikasi mobile dan viewport safe-area diperbarui.
+
+Batas pengujian:
+- Sintaks JavaScript dan Service Worker diperiksa dengan Node.js.
+- Manifest dan struktur paket diperiksa secara lokal.
+- Pengujian kamera, printer fisik, PDF printer, instalasi TWA/APK, serta deployment GitHub/Cloudflare harus dilakukan pada browser/perangkat dan domain hosting sebenarnya.
+- Library XLSX masih menggunakan CDN; cache offline baru terisi setelah pemuatan berhasil saat online.
+
+PERBAIKAN LANJUTAN - 23 NOVEMBER 2026
+- Memperbaiki alur tombol Cetak Paket Semua Laporan agar kesalahan pada satu bagian laporan tidak membatalkan seluruh proses cetak.
+- Menambahkan pemeriksaan data siswa sebelum proses cetak, dengan pesan yang jelas jika data belum tersedia.
+- Memasukkan laporan Remedial Siswa ke dalam paket cetak semua laporan.
+- Menambahkan pencatatan console dan pesan kesalahan yang lebih informatif jika laporan gagal dibangun.
+- Memperkuat validasi area cetak dan dukungan window.print pada browser/WebView.
+- Menjaga bagian laporan lain tetap dapat dicetak apabila salah satu bagian mengalami data tidak lengkap.
