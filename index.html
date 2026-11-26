@@ -516,14 +516,14 @@
     <!-- ==================== TAB 1: IDENTITAS & SISWA ==================== -->
     <section id="tab-data" class="tab-page active">
       <div class="card" id="kauAuthCard" style="border:2px solid #a7f3d0;background:#f0fdf4;">
-        <h2>🔐 Registrasi & Verifikasi Akun KAU</h2><p>Aktivasi akses dilakukan dengan OTP Gmail. Lengkapi profil dan verifikasi sebelum mengunci identitas akun.</p>
+        <h2>🔐 Registrasi & Verifikasi Akun KAU</h2><p>Pendaftaran pertama: isi identitas pada Data Identitas Ujian, WhatsApp, jenis guru dan Gmail lalu verifikasi OTP. Login berikutnya cukup menggunakan Gmail.</p>
         <div class="grid-2">
           <div><label>Jenis Guru *</label><select id="kauTeacherType" onchange="kauToggleLevel()"><option value="NON_PAI">Guru Non-PAI</option><option value="PAI">Guru PAI</option></select></div>
           <div id="kauLevelWrap" hidden><label>Jenjang Guru PAI *</label><select id="kauLevel"><option value="SD">SD</option><option value="LANJUTAN">Lanjutan/SMP-SMA</option></select></div>
           <div><label>Gmail aktif *</label><input id="kauEmail" type="email" placeholder="nama@gmail.com"></div><div><label>WhatsApp aktif *</label><input id="kauWhatsapp" placeholder="628xxxxxxxxxx"></div>
-          <div><label>Nama Guru *</label><input id="kauName" placeholder="Nama lengkap"></div><div><label>Nama Sekolah *</label><input id="kauSchool" placeholder="Nama sekolah"></div><div><label>NIP (opsional)</label><input id="kauNip" placeholder="NIP"></div>
+          <div style="grid-column:1/-1;background:#ecfdf5;padding:10px;border-radius:8px"><b>Identitas guru diambil dari bagian “Data Identitas Ujian” di bawah.</b><br><small>Isi Nama Sekolah, Guru Pengajar, dan NIP Guru satu kali saja. Data tersebut akan dipakai untuk profil akun KAU.</small></div>
           <div><label>OTP 6 digit</label><input id="kauOtp" inputmode="numeric" maxlength="6" placeholder="Kode dari Gmail"></div>
-        </div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn btn-outline" onclick="kauRequestOtp()">Kirim OTP Gmail</button><button class="btn btn-outline" onclick="kauVerifyOtp()">Verifikasi OTP</button><button class="btn btn-primary" onclick="kauRegister()">Simpan & Aktivasi Akun</button><button class="btn btn-outline" onclick="kauLogin()">Login Akun Terdaftar</button></div><p id="kauAuthStatus" role="status" style="margin-top:8px"></p>
+        </div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn btn-outline" onclick="kauRequestOtp()">Kirim OTP Gmail</button><button class="btn btn-outline" onclick="kauVerifyOtp()">Verifikasi OTP (pendaftaran pertama)</button><button class="btn btn-primary" onclick="kauRegister()">Daftar Akun Pertama</button><button class="btn btn-outline" onclick="kauLogin()">Login / Muat Profil dengan Gmail</button></div><p id="kauAuthStatus" role="status" style="margin-top:8px"></p>
       </div>
 
       <div class="card" style="border-color:#93c5fd; background:linear-gradient(to bottom, #eff6ff, #ffffff);">
@@ -1380,7 +1380,10 @@ async function createSessionForClassAndSubject(kelasName, mapelName, templateSes
   const kls=String(kelasName||'').trim(),mpl=String(mapelName||'').trim();
   const duplicate=workspace.sessions.find(x=>(x.meta.kelas||'').trim()===kls&&(x.meta.mapel||'').trim()===mpl); if(duplicate){switchActiveSession(duplicate.id);return;}
   const userId=localStorage.getItem('kau_access_user_id');
-  if(userId){const classExists=workspace.sessions.some(x=>(x.meta.kelas||'').trim()===kls);const kind=classExists?'subject':'class';const check=await kauCheckAccess(kind);if(!check.allowed){kauQuotaModal(kind,check);return;}const consumed=await kauConsumeAccess(kind,`${kls}|${mpl}`);if(!consumed.ok){kauQuotaModal(kind,consumed);return;}}
+  if(!userId){kauQuotaModal('class',{unregistered:true});return;}
+  const classExists=workspace.sessions.some(x=>(x.meta.kelas||'').trim()===kls);const kind=classExists?'subject':'class';
+  const check=await kauCheckAccess(kind);if(!check.allowed){kauQuotaModal(kind,check);return;}
+  const consumed=await kauConsumeAccess(kind,`${kls}|${mpl}`);if(!consumed.ok){kauQuotaModal(kind,consumed);return;}
   return createSessionForClassAndSubjectCore(kelasName,mapelName,templateSession);
 }
 

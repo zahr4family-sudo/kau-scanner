@@ -1,0 +1,9 @@
+REVISI ALUR AKUN KAU
+- Login akun terdaftar kini cukup dengan Gmail tanpa OTP berulang.
+- OTP tetap wajib untuk pendaftaran pertama.
+- Profil terdaftar dimuat kembali otomatis ketika login.
+- Pendaftaran Gmail lain pada fingerprint perangkat yang telah terikat ditolak dan diarahkan meminta izin admin.
+- Login Gmail akun berbeda pada perangkat yang telah terikat ke akun lain ditolak dan diarahkan meminta izin admin.
+- Binding D1 tetap menggunakan DB dan database kau-access.
+
+CATATAN: Pengaturan/approval admin untuk pengecualian perangkat harus dilakukan melalui panel admin yang tersedia; penolakan otomatis belum membuat alur permohonan/approval baru.
