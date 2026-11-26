@@ -1,0 +1,7 @@
+name = "kau-scanner-pages"
+compatibility_date = "2026-11-25"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "kau-access"
+database_id = "ISI_DATABASE_ID_DARI_CLOUDFLARE"

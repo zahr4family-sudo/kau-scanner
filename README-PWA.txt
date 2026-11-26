@@ -62,14 +62,3 @@ UJI SEBELUM DISTRIBUSI
 [ ] Kamera dan pilih foto dapat digunakan.
 [ ] Scan, analisis, dan pergantian kelas/mapel diuji dengan data contoh.
 [ ] Mode offline diuji setelah aplikasi dan library XLSX pernah dibuka saat online.
-
-CATATAN PERBAIKAN CETAK LAPORAN (23 NOVEMBER 2026)
-Tombol "Cetak Paket Semua Laporan" kini memeriksa data siswa terlebih dahulu,
-menyusun setiap bagian laporan secara terpisah, dan tidak membatalkan seluruh
-paket bila satu bagian laporan mengalami kesalahan. Laporan Remedial Siswa
-juga disertakan. Jika ada bagian yang dilewati, aplikasi menampilkan nama
-bagian tersebut setelah dialog cetak dibuka.
-
-Jika dialog cetak tidak muncul di APK Android, pastikan WebView/komponen
-pembungkus APK mendukung window.print(). Sebagai uji silang, buka URL PWA
-melalui Chrome Android lalu pilih Cetak Paket Semua Laporan.

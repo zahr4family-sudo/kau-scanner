@@ -15,10 +15,9 @@ Batas pengujian:
 - Pengujian kamera, printer fisik, PDF printer, instalasi TWA/APK, serta deployment GitHub/Cloudflare harus dilakukan pada browser/perangkat dan domain hosting sebenarnya.
 - Library XLSX masih menggunakan CDN; cache offline baru terisi setelah pemuatan berhasil saat online.
 
-PERBAIKAN LANJUTAN - 23 NOVEMBER 2026
-- Memperbaiki alur tombol Cetak Paket Semua Laporan agar kesalahan pada satu bagian laporan tidak membatalkan seluruh proses cetak.
-- Menambahkan pemeriksaan data siswa sebelum proses cetak, dengan pesan yang jelas jika data belum tersedia.
-- Memasukkan laporan Remedial Siswa ke dalam paket cetak semua laporan.
-- Menambahkan pencatatan console dan pesan kesalahan yang lebih informatif jika laporan gagal dibangun.
-- Memperkuat validasi area cetak dan dukungan window.print pada browser/WebView.
-- Menjaga bagian laporan lain tetap dapat dicetak apabila salah satu bagian mengalami data tidak lengkap.
+
+8. Auth/RBAC Cloudflare Pages: ditambahkan skema D1 users, user_devices, otp_codes, verification_tokens, user_sessions, app_settings; OTP Gmail Brevo API; registrasi/login; kuota Non-PAI/PAI; device fingerprint; VIP/promotion; endpoint admin.
+9. Admin dashboard: admin.html untuk mode promosi, daftar/pencarian pengguna, quota usage, VIP, reset device, edit kuota dan blokir/aktifkan.
+10. Frontend: UI registrasi-verifikasi Gmail pada Data & Kunci, login user, akses kuota pada pembuatan sesi kelas/mapel, helper API.
+11. Deploy: ditambahkan panduan Cloudflare Pages Functions, D1 binding, secrets Brevo dan admin.
+12. Pengujian tambahan: sintaks endpoint Pages Functions, frontend helper dan script inline diperiksa dengan Node.js. Pengujian integrasi D1/Brevo masih harus dilakukan setelah secrets dan database diisi.

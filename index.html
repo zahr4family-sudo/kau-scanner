@@ -460,6 +460,8 @@
         page-break-inside: avoid !important;
       }
       #printArea svg {
+        print-color-adjust: exact !important;
+        -webkit-print-color-adjust: exact !important;
         max-width: 100% !important;
         height: auto !important;
         display: block !important;
@@ -513,6 +515,16 @@
 
     <!-- ==================== TAB 1: IDENTITAS & SISWA ==================== -->
     <section id="tab-data" class="tab-page active">
+      <div class="card" id="kauAuthCard" style="border:2px solid #a7f3d0;background:#f0fdf4;">
+        <h2>🔐 Registrasi & Verifikasi Akun KAU</h2><p>Aktivasi akses dilakukan dengan OTP Gmail. Lengkapi profil dan verifikasi sebelum mengunci identitas akun.</p>
+        <div class="grid-2">
+          <div><label>Jenis Guru *</label><select id="kauTeacherType" onchange="kauToggleLevel()"><option value="NON_PAI">Guru Non-PAI</option><option value="PAI">Guru PAI</option></select></div>
+          <div id="kauLevelWrap" hidden><label>Jenjang Guru PAI *</label><select id="kauLevel"><option value="SD">SD</option><option value="LANJUTAN">Lanjutan/SMP-SMA</option></select></div>
+          <div><label>Gmail aktif *</label><input id="kauEmail" type="email" placeholder="nama@gmail.com"></div><div><label>WhatsApp aktif *</label><input id="kauWhatsapp" placeholder="628xxxxxxxxxx"></div>
+          <div><label>Nama Guru *</label><input id="kauName" placeholder="Nama lengkap"></div><div><label>Nama Sekolah *</label><input id="kauSchool" placeholder="Nama sekolah"></div><div><label>NIP (opsional)</label><input id="kauNip" placeholder="NIP"></div>
+          <div><label>OTP 6 digit</label><input id="kauOtp" inputmode="numeric" maxlength="6" placeholder="Kode dari Gmail"></div>
+        </div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn btn-outline" onclick="kauRequestOtp()">Kirim OTP Gmail</button><button class="btn btn-outline" onclick="kauVerifyOtp()">Verifikasi OTP</button><button class="btn btn-primary" onclick="kauRegister()">Simpan & Aktivasi Akun</button><button class="btn btn-outline" onclick="kauLogin()">Login Akun Terdaftar</button></div><p id="kauAuthStatus" role="status" style="margin-top:8px"></p>
+      </div>
 
       <div class="card" style="border-color:#93c5fd; background:linear-gradient(to bottom, #eff6ff, #ffffff);">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; border-bottom:1px solid #bfdbfe; padding-bottom:6px; margin-bottom:10px;">
@@ -776,6 +788,14 @@
             📁 Pilih Foto LJK (Bisa Banyak)
             <input id="omrFileInput" type="file" accept="image/*" multiple style="display:none;" onchange="loadImageFiles(event)" />
           </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:0.78rem;font-weight:700;">
+            Mode Foto:
+            <select id="omrPhotoCropMode" onchange="setPhotoCropMode(this.value)" style="max-width:270px;padding:7px;border:1px solid #cbd5e1;border-radius:7px;">
+              <option value="auto">Auto-Deteksi 4 Sudut (Dengan Pengaman Anti-Zoom)</option>
+              <option value="whole">Gunakan Foto Utuh (Tanpa Auto-Crop)</option>
+              <option value="manual">Sesuaikan 4 Sudut Manual (Draggable)</option>
+            </select>
+          </label>
           <button class="btn btn-outline btn-sm" id="btnToggleAutoCap" onclick="toggleAutoCapture()">🤖 Auto-Jepret: ON</button>
           <button class="btn btn-warning btn-sm" onclick="prepareNextScan(false)">🔄 Scan Ulang / Bersihkan</button>
         </div>
@@ -1034,7 +1054,7 @@ let prevLiveCorners = null;
 let sessionScanCount = 0;
 
 let scanFilterMode = 'magic';
-let manualCornerMode = false;
+let photoCropMode = 'auto'; let manualCornerMode = false;
 let currentDetectedCorners = null;
 let draggingCornerKey = null;
 let inputToastTimer = null;
@@ -1086,6 +1106,12 @@ async function loadFromIDB() {
 }
 
 function persistNow() {
+  // Require OTP-verified account session before persisting workspace data.
+  if (!localStorage.getItem('kau_access_user_id') || !localStorage.getItem('kau_access_session')) {
+    const badge = document.getElementById('saveStatusBadge');
+    if (badge) badge.textContent = '🔒 Verifikasi OTP Gmail diperlukan untuk menyimpan';
+    return;
+  }
   try {
     syncMasterListsFromSessions();
     const serialized = JSON.stringify(workspace);
@@ -1350,7 +1376,15 @@ function cloneRosterClean(studentsList) {
   }));
 }
 
-function createSessionForClassAndSubject(kelasName, mapelName, templateSession = null) {
+async function createSessionForClassAndSubject(kelasName, mapelName, templateSession = null) {
+  const kls=String(kelasName||'').trim(),mpl=String(mapelName||'').trim();
+  const duplicate=workspace.sessions.find(x=>(x.meta.kelas||'').trim()===kls&&(x.meta.mapel||'').trim()===mpl); if(duplicate){switchActiveSession(duplicate.id);return;}
+  const userId=localStorage.getItem('kau_access_user_id');
+  if(userId){const classExists=workspace.sessions.some(x=>(x.meta.kelas||'').trim()===kls);const kind=classExists?'subject':'class';const check=await kauCheckAccess(kind);if(!check.allowed){kauQuotaModal(kind,check);return;}const consumed=await kauConsumeAccess(kind,`${kls}|${mpl}`);if(!consumed.ok){kauQuotaModal(kind,consumed);return;}}
+  return createSessionForClassAndSubjectCore(kelasName,mapelName,templateSession);
+}
+
+function createSessionForClassAndSubjectCore(kelasName, mapelName, templateSession = null) {
   const base = templateSession || state;
   const sameClassSession = workspace.sessions.find(s => (s.meta.kelas || '').trim() === kelasName.trim());
   const rosterSource = sameClassSession ? sameClassSession.students : base.students;
@@ -1430,7 +1464,11 @@ function onQuickSubjectChange(val) {
   }
 }
 
-function createNewSessionPrompt() {
+async function createNewSessionPrompt() {
+  return createNewSessionPromptOriginal();
+}
+
+async function createNewSessionPromptOriginal() {
   const kls = prompt('Nama Kelas (contoh: IV-A / Ganjil):', state.meta.kelas || 'IV-A / Ganjil');
   if (!kls || !kls.trim()) return;
   const mpl = prompt('Nama Mata Pelajaran (contoh: Matematika):', 'Matematika');
@@ -3224,7 +3262,11 @@ function startLiveScannerLoop() {
     probeCanvas.height = ph;
     probeCtx.drawImage(video, 0, 0, pw, ph);
     const imgData = probeCtx.getImageData(0, 0, pw, ph);
-    const res = detectFiducialCorners(imgData, pw, ph, expectedAspect);
+    let res = detectFiducialCorners(imgData, pw, ph, expectedAspect);
+    if (!res.found) {
+      const altLayout = getOMRLayout(!shouldUseF4TwoUp());
+      res = detectFiducialCorners(imgData, pw, ph, altLayout.fw / altLayout.fh);
+    }
 
     const gctx = guideCanvas.getContext('2d');
     gctx.clearRect(0, 0, vw, vh);
@@ -3358,6 +3400,40 @@ function loadImageFiles(ev) {
   });
 }
 
+function loadSingleFileObject(file, onDone) {
+  const objUrl = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    const off = document.createElement('canvas');
+    off.width = img.naturalWidth || img.width;
+    off.height = img.naturalHeight || img.height;
+    off.getContext('2d').drawImage(img, 0, 0);
+    loadedScanImage = off;
+    manualCornerMode = photoCropMode === 'manual';
+    currentDetectedCorners = null;
+    updateManualCornerUI();
+    URL.revokeObjectURL(objUrl);
+    if (onDone) onDone();
+    reprocessOMR();
+  };
+  img.onerror = () => {
+    URL.revokeObjectURL(objUrl);
+    if (onDone) onDone();
+    alert('Gagal memuat file gambar LJK. Silakan coba lagi.');
+  };
+  img.src = objUrl;
+}
+
+function setPhotoCropMode(mode) {
+  photoCropMode = ['auto', 'whole', 'manual'].includes(mode) ? mode : 'auto';
+  if (loadedScanImage) {
+    manualCornerMode = photoCropMode === 'manual';
+    updateManualCornerUI();
+    if (manualCornerMode) renderManualCornerEditorCanvas();
+    else reprocessOMR();
+  }
+}
+
 function setScanFilter(mode) {
   scanFilterMode = mode;
   ['magic', 'bw', 'original'].forEach(m => {
@@ -3407,7 +3483,12 @@ function renderManualCornerEditorCanvas() {
     if (autoC.found) {
       currentDetectedCorners = { tl: autoC.tl, tr: autoC.tr, br: autoC.br, bl: autoC.bl };
     } else {
-      currentDetectedCorners = defaultManualCorners(W, H, layout.fw / layout.fh);
+      currentDetectedCorners = {
+        tl: { x: W * 0.04, y: H * 0.04 },
+        tr: { x: W * 0.96, y: H * 0.04 },
+        br: { x: W * 0.96, y: H * 0.96 },
+        bl: { x: W * 0.04, y: H * 0.96 }
+      };
     }
   }
 
@@ -3683,31 +3764,6 @@ function prepareNextScan(advanceStudent = true) {
 }
 
 // Deteksi 4 Kotak Jangkar Hitam dengan Filter Anti-Lintas 2 LJK & Prioritas Tengah Layar
-// ==================== DETEKSI 4 KOTAK JANGKAR LJK (v2) ====================
-// Perbaikan utama dibanding versi lama:
-//  1) Jangkar dikenali dari UKURAN yang sesuai tata letak LJK (mkSize/fw), bukan sekadar "kotak hitam".
-//     Bubble yang diisi siswa (lebih kecil & bulat) tidak lagi dianggap sudut -> tidak ada lagi foto "terlalu zoom".
-//  2) Bentuk diuji dengan kotak pembatas terotasi (fill >= 0.80) sehingga jangkar yang miring tetap terdeteksi.
-//  3) Aturan "ada jangkar lain di tengah sisi" hanya berlaku untuk jangkar BERUKURAN SAMA (batas 2 LJK pada F4),
-//     bukan untuk bubble terisi (penyebab sudut yang benar justru ditolak).
-//  4) Kandidat 4 sudut dinilai: rasio aspek tata letak, rasio ukuran jangkar terhadap lebar LJK, bentuk jajar genjang/
-//     perspektif, keterisolasian (area putih di sekeliling jangkar), dan posisi di tengah frame.
-//  5) Tata letak (A4 / F4 2-in-1) dipilih otomatis dari hasil deteksi, bukan dari tebakan awal.
-let __anchorProfileCache = { key: '', profiles: null };
-
-function getAnchorLayoutProfiles() {
-  let key = '';
-  try { key = JSON.stringify(state.config); } catch (e) { key = String(Math.random()); }
-  if (__anchorProfileCache.key === key && __anchorProfileCache.profiles) return __anchorProfileCache.profiles;
-  const pref = shouldUseF4TwoUp();
-  const profiles = [pref, !pref].map((compact, i) => {
-    const L = getOMRLayout(compact);
-    return { compact, primary: i === 0, aspect: L.fw / L.fh, ratio: L.mkSize / L.fw };
-  });
-  __anchorProfileCache = { key, profiles };
-  return profiles;
-}
-
 function detectFiducialCorners(imgData, w, h, expectedAspect = 1.32) {
   const d = imgData.data;
   const n = w * h;
@@ -3717,261 +3773,237 @@ function detectFiducialCorners(imgData, w, h, expectedAspect = 1.32) {
     gray[i] = (77 * d[p] + 150 * d[p + 1] + 29 * d[p + 2]) >> 8;
   }
 
-  // ---- Citra integral + ambang adaptif (tahan bayangan / pencahayaan tidak merata) ----
   const stride = w + 1;
   const integ = new Uint32Array((w + 1) * (h + 1));
   for (let y = 0; y < h; y++) {
     let rowSum = 0;
-    const gRow = y * w, iPrev = y * stride, iCurr = (y + 1) * stride;
+    const gRow = y * w;
+    const iPrev = y * stride;
+    const iCurr = (y + 1) * stride;
     for (let x = 0; x < w; x++) {
       rowSum += gray[gRow + x];
       integ[iCurr + x + 1] = integ[iPrev + x + 1] + rowSum;
     }
   }
-  const maxDim = Math.max(w, h);
+
   const winR = Math.max(12, Math.round(Math.min(w, h) * 0.04));
-  const darkAt = (x, y) => {
+  const isAdaptiveDark = (x, y) => {
     const x0 = Math.max(0, x - winR), y0 = Math.max(0, y - winR);
     const x1 = Math.min(w - 1, x + winR), y1 = Math.min(h - 1, y + winR);
     const area = (x1 - x0 + 1) * (y1 - y0 + 1);
-    const sum = integ[(y1 + 1) * stride + (x1 + 1)] - integ[y0 * stride + (x1 + 1)]
-              - integ[(y1 + 1) * stride + x0] + integ[y0 * stride + x0];
+    const sum = integ[(y1 + 1) * stride + (x1 + 1)]
+              - integ[y0 * stride + (x1 + 1)]
+              - integ[(y1 + 1) * stride + x0]
+              + integ[y0 * stride + x0];
+    const localMean = sum / area;
     const g = gray[y * w + x];
-    return g < (sum / area) * 0.70 && g < 162;
+    return g < localMean * 0.70 && g < 162;
   };
-  const mask = new Uint8Array(n);
-  for (let y = 1; y < h - 1; y++) {
-    for (let x = 1; x < w - 1; x++) {
-      if (gray[y * w + x] < 170 && darkAt(x, y)) mask[y * w + x] = 1;
-    }
-  }
 
-  // ---- Komponen terhubung -> kandidat kotak padat ----
   const visited = new Uint8Array(n);
-  const queue = new Int32Array(n);
-  const minSide = Math.max(4, Math.round(maxDim * 0.007));
-  const maxSide = Math.round(maxDim * 0.12);
-  const maxArea = maxSide * maxSide * 1.25;
-  const cands = [];
-  const ANG = [];
-  for (let a = 0; a < 90; a += 5) ANG.push([Math.cos(a * Math.PI / 180), Math.sin(a * Math.PI / 180)]);
+  const queueX = new Int32Array(25000);
+  const queueY = new Int32Array(25000);
 
-  for (let y0 = 1; y0 < h - 1; y0++) {
-    for (let x0 = 1; x0 < w - 1; x0++) {
-      const start = y0 * w + x0;
-      if (!mask[start] || visited[start]) continue;
+  const step = w <= 500 ? 1 : 2;
+  const minSide = Math.max(5, Math.round(w * 0.009));
+  const maxSide = Math.round(w * 0.095);
+  const leftCandidates = [];
+  const rightCandidates = [];
+
+  for (let y = 2; y < h - 2; y += step) {
+    for (let x = 2; x < w - 2; x += step) {
+      // Kandidat marker dibatasi pada kuadran pojok terluar.
+      const inLeft = x <= w * 0.25, inRight = x >= w * 0.75;
+      const inTop = y <= h * 0.25, inBottom = y >= h * 0.75;
+      if (!((inLeft || inRight) && (inTop || inBottom))) continue;
+      const idx = y * w + x;
+      if (visited[idx] || !isAdaptiveDark(x, y)) continue;
+
       let head = 0, tail = 0;
-      queue[tail++] = start; visited[start] = 1;
-      let sumX = 0, sumY = 0, minX = x0, maxX = x0, minY = y0, maxY = y0;
-      while (head < tail) {
-        const idx = queue[head++];
-        const cy = (idx / w) | 0, cx = idx - cy * w;
-        sumX += cx; sumY += cy;
-        if (cx < minX) minX = cx; if (cx > maxX) maxX = cx;
-        if (cy < minY) minY = cy; if (cy > maxY) maxY = cy;
-        if (cx > 1) { const k = idx - 1; if (mask[k] && !visited[k]) { visited[k] = 1; queue[tail++] = k; } }
-        if (cx < w - 2) { const k = idx + 1; if (mask[k] && !visited[k]) { visited[k] = 1; queue[tail++] = k; } }
-        if (cy > 1) { const k = idx - w; if (mask[k] && !visited[k]) { visited[k] = 1; queue[tail++] = k; } }
-        if (cy < h - 2) { const k = idx + w; if (mask[k] && !visited[k]) { visited[k] = 1; queue[tail++] = k; } }
-      }
-      const area = tail;
-      const bw = maxX - minX + 1, bh = maxY - minY + 1;
-      if (area < minSide * minSide * 0.6 || area > maxArea) continue;
-      if (bw < minSide || bh < minSide || bw > maxSide * 1.5 || bh > maxSide * 1.5) continue;
+      queueX[tail] = x; queueY[tail] = y; tail++;
+      visited[idx] = 1;
 
-      // Kotak pembatas terotasi minimum -> kepadatan (fill) & rasio sisi, tahan terhadap rotasi foto
-      const mx = sumX / area, my = sumY / area;
-      let bestBox = Infinity, bestRatio = 1;
-      for (let ai = 0; ai < ANG.length; ai++) {
-        const c = ANG[ai][0], s = ANG[ai][1];
-        let uMin = 1e9, uMax = -1e9, vMin = 1e9, vMax = -1e9;
-        for (let q = 0; q < area; q++) {
-          const idx = queue[q];
-          const py = (idx / w) | 0, px = idx - py * w;
-          const u = (px - mx) * c + (py - my) * s;
-          const v = -(px - mx) * s + (py - my) * c;
-          if (u < uMin) uMin = u; if (u > uMax) uMax = u;
-          if (v < vMin) vMin = v; if (v > vMax) vMax = v;
-        }
-        const du = uMax - uMin + 1, dv = vMax - vMin + 1;
-        if (du * dv < bestBox) { bestBox = du * dv; bestRatio = du / dv; }
-      }
-      const fill = area / bestBox;
-      if (fill < 0.80) continue;
-      if (bestRatio < 0.62 || bestRatio > 1.61) continue;
+      let sumX = 0, sumY = 0, count = 0;
+      let minX = x, maxX = x, minY = y, maxY = y;
 
-      const side = Math.sqrt(area);
-      const squareness = 1 - Math.min(1, Math.abs(1 - bestRatio));
+      while (head < tail && tail < 24990) {
+        const cx = queueX[head], cy = queueY[head];
+        head++;
+        sumX += cx; sumY += cy; count++;
+        if (cx < minX) minX = cx;
+        if (cx > maxX) maxX = cx;
+        if (cy < minY) minY = cy;
+        if (cy > maxY) maxY = cy;
 
-      // Keterisolasian: jangkar punya ruang putih di sekelilingnya (bubble terisi dikelilingi garis lingkaran/teks)
-      let darkRing = 0, ringN = 0;
-      const rr = side * 0.82;
-      for (let k = 0; k < 24; k++) {
-        const th = (k / 24) * Math.PI * 2;
-        const px = Math.round(mx + rr * Math.cos(th)), py = Math.round(my + rr * Math.sin(th));
-        if (px < 1 || py < 1 || px >= w - 1 || py >= h - 1) continue;
-        ringN++;
-        if (mask[py * w + px]) darkRing++;
-      }
-      const isolation = ringN > 0 ? 1 - darkRing / ringN : 0.5;
-      const qScore = fill * 100 + squareness * 50 + isolation * 40;
-      cands.push({ x: mx, y: my, s: side, bw, bh, qScore, isolation });
-    }
-  }
-
-  // Pertahankan kandidat terbaik (ukuran besar & padat diutamakan)
-  let sMax = 1;
-  cands.forEach(c => { if (c.s > sMax) sMax = c.s; });
-  cands.sort((a, b) => (b.qScore + 50 * (b.s / sMax)) - (a.qScore + 50 * (a.s / sMax)));
-  const pool = cands.slice(0, 70);
-
-  const profiles = getAnchorLayoutProfiles();
-  const frameCx = w * 0.5, frameCy = h * 0.5;
-  const maxFrameDist = Math.hypot(frameCx, frameCy) || 1;
-
-  const search = (tol) => {
-    let best = null, bestScore = -Infinity;
-    const minSideLen = maxDim * 0.2;
-    const N = pool.length;
-    for (let i = 0; i < N; i++) {
-      const tl = pool[i];
-      for (let k = 0; k < N; k++) {
-        if (k === i) continue;
-        const tr = pool[k];
-        const dxT = tr.x - tl.x, dyT = tr.y - tl.y;
-        if (dxT < minSideLen || Math.abs(dyT) > 0.5 * dxT) continue;
-        const sr1 = Math.min(tl.s, tr.s) / Math.max(tl.s, tr.s);
-        if (sr1 < tol.sizeCons) continue;
-        for (let j = 0; j < N; j++) {
-          if (j === i || j === k) continue;
-          const bl = pool[j];
-          const dyL = bl.y - tl.y, dxL = bl.x - tl.x;
-          if (dyL < minSideLen * 0.5 || Math.abs(dxL) > 0.5 * dyL) continue;
-          if (Math.min(tl.s, bl.s) / Math.max(tl.s, bl.s) < tol.sizeCons) continue;
-          for (let m = 0; m < N; m++) {
-            if (m === i || m === k || m === j) continue;
-            const br = pool[m];
-            // BR harus dekat posisi jajar genjang (dikoreksi toleransi perspektif)
-            const ex = tr.x + bl.x - tl.x, ey = tr.y + bl.y - tl.y;
-            const topW = Math.hypot(dxT, dyT), leftH = Math.hypot(dxL, dyL);
-            if (Math.hypot(br.x - ex, br.y - ey) > 0.30 * Math.max(topW, leftH)) continue;
-            const sMin = Math.min(tl.s, tr.s, bl.s, br.s), sMaxQ = Math.max(tl.s, tr.s, bl.s, br.s);
-            const sizeCons = sMin / sMaxQ;
-            if (sizeCons < tol.sizeCons) continue;
-
-            const botW = Math.hypot(br.x - bl.x, br.y - bl.y);
-            const rightH = Math.hypot(br.x - tr.x, br.y - tr.y);
-            if (botW < minSideLen || rightH < minSideLen * 0.5) continue;
-            const wRatio = topW / botW, hRatio = leftH / rightH;
-            if (wRatio < tol.persp || wRatio > 1 / tol.persp || hRatio < tol.persp || hRatio > 1 / tol.persp) continue;
-
-            // sudut-sudut dalam harus mendekati siku-siku
-            const ang = (ax, ay, bx, by) => Math.abs((ax * bx + ay * by) / (Math.hypot(ax, ay) * Math.hypot(bx, by) || 1));
-            if (ang(tr.x - tl.x, tr.y - tl.y, bl.x - tl.x, bl.y - tl.y) > tol.cos) continue;
-            if (ang(tl.x - tr.x, tl.y - tr.y, br.x - tr.x, br.y - tr.y) > tol.cos) continue;
-            if (ang(tr.x - br.x, tr.y - br.y, bl.x - br.x, bl.y - br.y) > tol.cos) continue;
-            if (ang(tl.x - bl.x, tl.y - bl.y, br.x - bl.x, br.y - bl.y) > tol.cos) continue;
-
-            const avgW = (topW + botW) / 2, avgH = (leftH + rightH) / 2;
-            const sMean = (tl.s + tr.s + bl.s + br.s) / 4;
-            const measAspect = avgW / avgH;
-
-            // Tolak bila ada jangkar BERUKURAN SAMA di tengah sisi kiri/kanan (batas 2 LJK pada lembar F4)
-            let midBlocked = false;
-            for (let q = 0; q < N && !midBlocked; q++) {
-              if (q === i || q === k || q === j || q === m) continue;
-              const mc = pool[q];
-              if (mc.s < sMean * 0.72 || mc.s > sMean * 1.40 || mc.isolation < 0.6) continue;
-              const chk = (a, b, span) => {
-                const ex2 = b.x - a.x, ey2 = b.y - a.y, len = Math.hypot(ex2, ey2) || 1;
-                const t = ((mc.x - a.x) * ex2 + (mc.y - a.y) * ey2) / (len * len);
-                const perp = Math.abs((mc.x - a.x) * ey2 - (mc.y - a.y) * ex2) / len;
-                return t > 0.22 && t < 0.78 && perp < 0.09 * span;
-              };
-              if (chk(tl, bl, avgW) || chk(tr, br, avgW)) midBlocked = true;
-            }
-            if (midBlocked) continue;
-
-            // Tolak kuad yang tersusun dari objek lebih kecil (mis. bubble terisi) bila di foto masih ada
-            // sedikitnya 2 kotak padat terisolasi yang jauh lebih besar di luar kuad ini (itu jangkar sebenarnya).
-            let biggerCnt = 0;
-            for (let q = 0; q < N; q++) {
-              if (q === i || q === k || q === j || q === m) continue;
-              const bc = pool[q];
-              if (bc.s > sMean * 1.35 && bc.isolation >= 0.7) biggerCnt++;
-            }
-            if (biggerCnt >= 2) continue;
-
-            const quadCx = (tl.x + tr.x + bl.x + br.x) / 4, quadCy = (tl.y + tr.y + bl.y + br.y) / 4;
-            const centerDistNorm = Math.hypot(quadCx - frameCx, quadCy - frameCy) / maxFrameDist;
-            const qSum = tl.qScore + tr.qScore + bl.qScore + br.qScore;
-
-            for (let pi = 0; pi < profiles.length; pi++) {
-              const prof = profiles[pi];
-              const aspectDiff = Math.abs(Math.log(measAspect / prof.aspect));
-              if (aspectDiff > tol.aspect) continue;
-              const ratioDev = Math.abs(Math.log((sMean / avgW) / prof.ratio));
-              if (ratioDev > tol.ratio) continue;
-              const score = qSum
-                + sizeCons * 60
-                - aspectDiff * 170
-                - ratioDev * 120
-                + (1 - centerDistNorm) * 70
-                + (avgW / maxDim) * 55
-                + (prof.primary ? 10 : 0)
-                + (Math.abs(Math.log(prof.aspect / expectedAspect)) < 0.05 ? 6 : 0);
-              if (score > bestScore) {
-                bestScore = score;
-                const pk = c => ({ x: c.x, y: c.y, s: c.s });
-                best = { tl: pk(tl), tr: pk(tr), bl: pk(bl), br: pk(br), found: true, compact: prof.compact, score };
-              }
+        const neighbors = [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]];
+        for (let k = 0; k < 4; k++) {
+          const nx = neighbors[k][0], ny = neighbors[k][1];
+          if (nx >= 1 && nx < w - 1 && ny >= 1 && ny < h - 1) {
+            const nIdx = ny * w + nx;
+            if (!visited[nIdx] && isAdaptiveDark(nx, ny)) {
+              visited[nIdx] = 1;
+              queueX[tail] = nx; queueY[tail] = ny; tail++;
             }
           }
         }
       }
+
+      const bw = maxX - minX + 1;
+      const bh = maxY - minY + 1;
+      if (bw < minSide || bh < minSide || bw > maxSide || bh > maxSide) continue;
+      const aspect = bw / bh;
+      if (aspect < 0.65 || aspect > 1.54) continue;
+
+      const fillRatio = count / (bw * bh);
+      if (fillRatio < 0.70) continue;
+
+      const centX = sumX / count;
+      const centY = sumY / count;
+      const squareness = 1 - Math.abs(1 - aspect);
+      const qScore = (fillRatio * 100) + (squareness * 50);
+      const cand = { x: centX, y: centY, bw, bh, qScore };
+
+      if (centX < w * 0.42) leftCandidates.push(cand);
+      else if (centX > w * 0.58) rightCandidates.push(cand);
     }
-    return best;
+  }
+
+  let bestQuad = null;
+  let bestQuadScore = -Infinity;
+  const frameCx = w * 0.5;
+  const frameCy = h * 0.5;
+  const maxFrameDist = Math.hypot(frameCx, frameCy) || 1;
+
+  for (let i = 0; i < leftCandidates.length; i++) {
+    const tl = leftCandidates[i];
+    if (tl.y > h * 0.25 || tl.x > w * 0.25) continue;
+    for (let j = 0; j < leftCandidates.length; j++) {
+      if (i === j) continue;
+      const bl = leftCandidates[j];
+      if (bl.y <= tl.y + h * 0.16) continue;
+      if (Math.abs(tl.x - bl.x) > w * 0.14) continue;
+
+      // Tolak pasangan tl-bl jika ada kotak jangkar lain di tengah sisi kiri (tanda melompati batas 2 LJK)
+      const leftSpanY = bl.y - tl.y;
+      const midLeftX = (tl.x + bl.x) * 0.5;
+      let hasMidLeftAnchor = false;
+      for (let mIdx = 0; mIdx < leftCandidates.length; mIdx++) {
+        if (mIdx === i || mIdx === j) continue;
+        const mc = leftCandidates[mIdx];
+        if (mc.y > tl.y + leftSpanY * 0.22 && mc.y < bl.y - leftSpanY * 0.22 && Math.abs(mc.x - midLeftX) < w * 0.06) {
+          hasMidLeftAnchor = true;
+          break;
+        }
+      }
+      if (hasMidLeftAnchor) continue;
+
+      for (let k = 0; k < rightCandidates.length; k++) {
+        const tr = rightCandidates[k];
+        if (tr.y > h * 0.25 || tr.x < w * 0.75) continue;
+        if (Math.abs(tl.y - tr.y) > h * 0.13) continue;
+
+        for (let m = 0; m < rightCandidates.length; m++) {
+          if (k === m) continue;
+          const br = rightCandidates[m];
+          if (br.y <= tr.y + h * 0.16) continue;
+          if (Math.abs(tr.x - br.x) > w * 0.14) continue;
+          if (Math.abs(bl.y - br.y) > h * 0.13) continue;
+
+          // Tolak pasangan tr-br jika ada kotak jangkar lain di tengah sisi kanan
+          const rightSpanY = br.y - tr.y;
+          const midRightX = (tr.x + br.x) * 0.5;
+          let hasMidRightAnchor = false;
+          for (let mIdx = 0; mIdx < rightCandidates.length; mIdx++) {
+            if (mIdx === k || mIdx === m) continue;
+            const mc = rightCandidates[mIdx];
+            if (mc.y > tr.y + rightSpanY * 0.22 && mc.y < br.y - rightSpanY * 0.22 && Math.abs(mc.x - midRightX) < w * 0.06) {
+              hasMidRightAnchor = true;
+              break;
+            }
+          }
+          if (hasMidRightAnchor) continue;
+
+          const topW = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+          const botW = Math.hypot(br.x - bl.x, br.y - bl.y);
+          const leftH = Math.hypot(bl.x - tl.x, bl.y - tl.y);
+          const rightH = Math.hypot(br.x - tr.x, br.y - tr.y);
+
+          if (topW < w * 0.40 || botW < w * 0.40) continue;
+          const wRatio = topW / botW;
+          const hRatio = leftH / rightH;
+          if (wRatio < 0.74 || wRatio > 1.35 || hRatio < 0.74 || hRatio > 1.35) continue;
+
+          const measAspect = ((topW + botW) * 0.5) / ((leftH + rightH) * 0.5);
+          const aspectDiff = Math.abs(Math.log(measAspect / Math.max(0.4, expectedAspect)));
+          if (aspectDiff > 0.44) continue;
+
+          const quadCx = (tl.x + tr.x + bl.x + br.x) * 0.25;
+          const quadCy = (tl.y + tr.y + bl.y + br.y) * 0.25;
+          const centerDistNorm = Math.hypot(quadCx - frameCx, quadCy - frameCy) / maxFrameDist;
+
+          const sizeConsistency = 1 - Math.abs(tl.bw - br.bw) / Math.max(tl.bw, br.bw);
+          const totalScore = (tl.qScore + tr.qScore + bl.qScore + br.qScore)
+                           + (sizeConsistency * 60)
+                           - (aspectDiff * 155)
+                           + ((1 - centerDistNorm) * 85)
+                           + (topW / w) * 45;
+
+          if (totalScore > bestQuadScore) {
+            bestQuadScore = totalScore;
+            bestQuad = { tl, tr, bl, br, found: true };
+          }
+        }
+      }
+    }
+  }
+
+  if (bestQuad) return bestQuad;
+
+  // Fallback berbasis rasio aspek & kedekatan pusat frame (tidak asal ambil sudut terjauh lintas 2 LJK)
+  const fallbackPick = (arr, isTop) => {
+    if (!arr.length) return null;
+    const sorted = [...arr].sort((a, b) => isTop ? (a.y - b.y) : (b.y - a.y));
+    return sorted[0];
   };
+  const ftl = fallbackPick(leftCandidates.filter(c => c.x < w * 0.25 && c.y < h * 0.25), true);
+  const fbl = fallbackPick(leftCandidates.filter(c => c.x < w * 0.25 && c.y > h * 0.75), false);
+  const ftr = fallbackPick(rightCandidates.filter(c => c.x > w * 0.75 && c.y < h * 0.25), true);
+  const fbr = fallbackPick(rightCandidates.filter(c => c.x > w * 0.75 && c.y > h * 0.75), false);
 
-  let result = search({ sizeCons: 0.70, persp: 0.62, cos: 0.50, aspect: 0.36, ratio: 0.36 });
-  if (!result) result = search({ sizeCons: 0.55, persp: 0.50, cos: 0.62, aspect: 0.50, ratio: 0.55 });
-  if (result) return result;
+  let found = false;
+  if (ftl && ftr && fbl && fbr && (fbl.y - ftl.y > h * 0.16) && (fbr.y - ftr.y > h * 0.16)) {
+    const fW = ((ftr.x - ftl.x) + (fbr.x - fbl.x)) * 0.5;
+    const fH = ((fbl.y - ftl.y) + (fbr.y - ftr.y)) * 0.5;
+    const fAsp = fW / Math.max(1, fH);
+    found = Math.abs(Math.log(fAsp / Math.max(0.4, expectedAspect))) <= 0.48;
+  }
 
-  // Tidak yakin -> JANGAN menebak. Beri kuad bantu (tengah frame, rasio aspek yang diharapkan) untuk editor manual.
-  const prof = profiles[0];
-  const guess = defaultManualCorners(w, h, prof.aspect);
-  return { tl: guess.tl, tr: guess.tr, bl: guess.bl, br: guess.br, found: false, compact: prof.compact };
-}
-
-// Kuad awal untuk editor sudut manual: persegi panjang di tengah frame dengan rasio aspek LJK
-function defaultManualCorners(W, H, aspect) {
-  let qw = W * 0.82, qh = qw / aspect;
-  if (qh > H * 0.86) { qh = H * 0.86; qw = qh * aspect; }
-  const x0 = (W - qw) / 2, y0 = (H - qh) / 2;
   return {
-    tl: { x: x0, y: y0 }, tr: { x: x0 + qw, y: y0 },
-    br: { x: x0 + qw, y: y0 + qh }, bl: { x: x0, y: y0 + qh }
+    tl: ftl || { x: w * 0.05, y: h * 0.04 },
+    tr: ftr || { x: w * 0.95, y: h * 0.04 },
+    bl: fbl || { x: w * 0.05, y: h * 0.58 },
+    br: fbr || { x: w * 0.95, y: h * 0.58 },
+    found
   };
 }
 
-// Penyempurnaan sub-piksel pada resolusi asli: hanya komponen gelap yang terhubung dengan titik jangkar
-// (garis bingkai di dekat jangkar tidak lagi ikut menggeser titik ke dalam).
+// Penyempurnaan Titik Sudut Sub-Piksel pada Gambar Resolusi Asli
 function refineAnchorCornersFullRes(srcCtx, srcW, srcH, corners) {
   if (!corners || !corners.found) return;
+  const rPatch = Math.max(16, Math.round(srcW * 0.032));
   ['tl', 'tr', 'br', 'bl'].forEach(key => {
     const pt = corners[key];
-    const side = pt.s && pt.s > 4 ? pt.s : Math.max(12, srcW * 0.028);
-    const rPatch = Math.max(10, Math.round(side * 1.0));
     const x0 = Math.max(0, Math.round(pt.x - rPatch));
     const y0 = Math.max(0, Math.round(pt.y - rPatch));
     const x1 = Math.min(srcW - 1, Math.round(pt.x + rPatch));
     const y1 = Math.min(srcH - 1, Math.round(pt.y + rPatch));
-    const pw = x1 - x0 + 1, ph = y1 - y0 + 1;
+    const pw = x1 - x0 + 1;
+    const ph = y1 - y0 + 1;
     if (pw < 8 || ph < 8) return;
 
     const patch = srcCtx.getImageData(x0, y0, pw, ph).data;
-    const grays = new Uint8Array(pw * ph);
     let minG = 255, maxG = 0;
+    const grays = new Uint8Array(pw * ph);
     for (let i = 0; i < pw * ph; i++) {
       const p = i * 4;
       const g = (77 * patch[p] + 150 * patch[p + 1] + 29 * patch[p + 2]) >> 8;
@@ -3980,80 +4012,28 @@ function refineAnchorCornersFullRes(srcCtx, srcW, srcH, corners) {
       if (g > maxG) maxG = g;
     }
     if (maxG - minG < 45) return;
-    const thresh = minG + (maxG - minG) * 0.5;
 
-    // cari piksel gelap terdekat dari titik awal sebagai benih
-    const sx = Math.round(pt.x - x0), sy = Math.round(pt.y - y0);
-    let seed = -1, bestD = Infinity;
-    const searchR = Math.max(3, Math.round(side * 0.6));
-    for (let yy = Math.max(0, sy - searchR); yy <= Math.min(ph - 1, sy + searchR); yy++) {
-      for (let xx = Math.max(0, sx - searchR); xx <= Math.min(pw - 1, sx + searchR); xx++) {
-        if (grays[yy * pw + xx] <= thresh) {
-          const dd = (xx - sx) * (xx - sx) + (yy - sy) * (yy - sy);
-          if (dd < bestD) { bestD = dd; seed = yy * pw + xx; }
+    const thresh = minG + (maxG - minG) * 0.38;
+    let sumX = 0, sumY = 0, sumW = 0;
+    for (let y = 0; y < ph; y++) {
+      for (let x = 0; x < pw; x++) {
+        const g = grays[y * pw + x];
+        if (g <= thresh) {
+          const wgt = (thresh - g + 1);
+          sumX += (x0 + x) * wgt;
+          sumY += (y0 + y) * wgt;
+          sumW += wgt;
         }
       }
     }
-    if (seed < 0) return;
-
-    const seen = new Uint8Array(pw * ph);
-    const q = new Int32Array(pw * ph);
-    let head = 0, tail = 0;
-    q[tail++] = seed; seen[seed] = 1;
-    let sumX = 0, sumY = 0, sumW = 0, cnt = 0;
-    while (head < tail) {
-      const idx = q[head++];
-      const py = (idx / pw) | 0, px = idx - py * pw;
-      const wgt = thresh - grays[idx] + 1;
-      sumX += (x0 + px) * wgt; sumY += (y0 + py) * wgt; sumW += wgt; cnt++;
-      if (px > 0) { const k = idx - 1; if (!seen[k] && grays[k] <= thresh) { seen[k] = 1; q[tail++] = k; } }
-      if (px < pw - 1) { const k = idx + 1; if (!seen[k] && grays[k] <= thresh) { seen[k] = 1; q[tail++] = k; } }
-      if (py > 0) { const k = idx - pw; if (!seen[k] && grays[k] <= thresh) { seen[k] = 1; q[tail++] = k; } }
-      if (py < ph - 1) { const k = idx + pw; if (!seen[k] && grays[k] <= thresh) { seen[k] = 1; q[tail++] = k; } }
+    if (sumW > 0) {
+      const rx = sumX / sumW;
+      const ry = sumY / sumW;
+      if (Math.hypot(rx - pt.x, ry - pt.y) < rPatch * 0.65) {
+        pt.x = rx;
+        pt.y = ry;
+      }
     }
-    // hanya terima bila ukurannya wajar untuk sebuah jangkar
-    if (cnt < side * side * 0.45 || cnt > side * side * 1.9 || sumW <= 0) return;
-    const rx = sumX / sumW, ry = sumY / sumW;
-    if (Math.hypot(rx - pt.x, ry - pt.y) < side * 0.6) { pt.x = rx; pt.y = ry; }
-  });
-}
-
-// ==================== PEMUATAN FOTO LJK (ORIENTASI EXIF + BATAS RESOLUSI) ====================
-const SCAN_MAX_DIM = 3200;
-
-async function decodeScanImageFile(file) {
-  if (typeof createImageBitmap === 'function') {
-    try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch (e) { /* lanjut ke <img> */ }
-  }
-  return await new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode')); };
-    img.src = url;
-  });
-}
-
-function loadSingleFileObject(file, onDone) {
-  decodeScanImageFile(file).then(img => {
-    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
-    const sc = Math.min(1, SCAN_MAX_DIM / Math.max(iw, ih));
-    const off = document.createElement('canvas');
-    off.width = Math.max(1, Math.round(iw * sc));
-    off.height = Math.max(1, Math.round(ih * sc));
-    const octx = off.getContext('2d', { willReadFrequently: true });
-    octx.imageSmoothingQuality = 'high';
-    octx.drawImage(img, 0, 0, off.width, off.height);
-    if (typeof img.close === 'function') img.close();
-    loadedScanImage = off;
-    manualCornerMode = false;
-    currentDetectedCorners = null;
-    updateManualCornerUI();
-    if (onDone) onDone();
-    reprocessOMR();
-  }).catch(() => {
-    if (onDone) onDone();
-    alert('Gagal memuat file gambar LJK. Silakan coba lagi.');
   });
 }
 
@@ -4131,6 +4111,27 @@ function applyScannerVisualEnhancement(ctx, width, height, mode) {
   ctx.putImageData(imgData, 0, 0);
 }
 
+function validateDetectedQuad(corners, imageW, imageH, expectedAspect) {
+  if (!corners || !corners.found) return { ok: false, reason: 'Marker tidak terdeteksi' };
+  const p = [corners.tl, corners.tr, corners.br, corners.bl];
+  if (p.some(pt => !pt || !Number.isFinite(pt.x) || !Number.isFinite(pt.y))) return { ok: false, reason: 'Koordinat sudut tidak valid' };
+  let twiceArea = 0;
+  for (let i = 0; i < 4; i++) {
+    const a = p[i], b = p[(i + 1) % 4];
+    twiceArea += a.x * b.y - b.x * a.y;
+  }
+  const areaRatio = Math.abs(twiceArea) * 0.5 / Math.max(1, imageW * imageH);
+  const topW = Math.hypot(corners.tr.x - corners.tl.x, corners.tr.y - corners.tl.y);
+  const bottomW = Math.hypot(corners.br.x - corners.bl.x, corners.br.y - corners.bl.y);
+  const leftH = Math.hypot(corners.bl.x - corners.tl.x, corners.bl.y - corners.tl.y);
+  const rightH = Math.hypot(corners.br.x - corners.tr.x, corners.br.y - corners.tr.y);
+  const measuredAspect = ((topW + bottomW) / 2) / Math.max(1, (leftH + rightH) / 2);
+  const aspectError = Math.abs(Math.log(measuredAspect / Math.max(0.25, expectedAspect)));
+  if (areaRatio < 0.40) return { ok: false, reason: `Area marker hanya ${(areaRatio * 100).toFixed(1)}% foto (batas aman 40%)` };
+  if (!Number.isFinite(measuredAspect) || aspectError > 0.55) return { ok: false, reason: 'Rasio area marker menyimpang dari rasio LJK' };
+  return { ok: true, areaRatio, measuredAspect };
+}
+
 function reprocessOMR() {
   if (!loadedScanImage) return;
   if (manualCornerMode) {
@@ -4140,34 +4141,60 @@ function reprocessOMR() {
 
   const srcW = loadedScanImage.width;
   const srcH = loadedScanImage.height;
-  const detectScale = Math.min(1, 1100 / Math.max(srcW, srcH));
+  if (photoCropMode === 'whole') {
+    const fullFrame = {
+      tl: { x: 0, y: 0 }, tr: { x: srcW - 1, y: 0 },
+      br: { x: srcW - 1, y: srcH - 1 }, bl: { x: 0, y: srcH - 1 }, found: true
+    };
+    currentDetectedCorners = { tl: { ...fullFrame.tl }, tr: { ...fullFrame.tr },
+      br: { ...fullFrame.br }, bl: { ...fullFrame.bl } };
+    processRectifiedOMRFromSource(fullFrame, shouldUseF4TwoUp());
+    return;
+  }
+  const detectScale = Math.min(1, 960 / Math.max(srcW, srcH));
   const dw = Math.round(srcW * detectScale);
   const dh = Math.round(srcH * detectScale);
 
   const detCanvas = document.createElement('canvas');
   detCanvas.width = dw;
   detCanvas.height = dh;
-  const detCtx = detCanvas.getContext('2d', { willReadFrequently: true });
-  detCtx.imageSmoothingQuality = 'high';
+  const detCtx = detCanvas.getContext('2d');
   detCtx.drawImage(loadedScanImage, 0, 0, dw, dh);
   const detData = detCtx.getImageData(0, 0, dw, dh);
 
   const preferCompact = shouldUseF4TwoUp();
   const layoutPrimary = getOMRLayout(preferCompact);
+  const layoutSecondary = getOMRLayout(!preferCompact);
 
-  // v2: detektor menilai kedua tata letak (A4 / F4 2-in-1) sekaligus dan mengembalikan yang paling cocok
-  const detected = detectFiducialCorners(detData, dw, dh, layoutPrimary.fw / layoutPrimary.fh);
-  const useCompact = detected.found ? !!detected.compact : preferCompact;
+  let detected = detectFiducialCorners(detData, dw, dh, layoutPrimary.fw / layoutPrimary.fh);
+  let useCompact = preferCompact;
+  if (!detected.found) {
+    const detAlt = detectFiducialCorners(detData, dw, dh, layoutSecondary.fw / layoutSecondary.fh);
+    if (detAlt.found) {
+      detected = detAlt;
+      useCompact = !preferCompact;
+    }
+  }
 
   const invScale = 1 / detectScale;
-  const mapPt = p => ({ x: p.x * invScale, y: p.y * invScale, s: (p.s || 0) * invScale });
   const corners = {
-    tl: mapPt(detected.tl),
-    tr: mapPt(detected.tr),
-    br: mapPt(detected.br),
-    bl: mapPt(detected.bl),
+    tl: { x: detected.tl.x * invScale, y: detected.tl.y * invScale },
+    tr: { x: detected.tr.x * invScale, y: detected.tr.y * invScale },
+    br: { x: detected.br.x * invScale, y: detected.br.y * invScale },
+    bl: { x: detected.bl.x * invScale, y: detected.bl.y * invScale },
     found: detected.found
   };
+
+  if (corners.found && photoCropMode === 'auto') {
+    const guard = validateDetectedQuad(corners, srcW, srcH, layoutPrimary.fw / layoutPrimary.fh);
+    if (!guard.ok) {
+      currentDetectedCorners = null;
+      showOriginalPhotoForManualCrop();
+      const summary = document.getElementById('scanResultSummary');
+      if (summary) summary.innerHTML = `<b style="color:#b45309">Auto-crop dibatalkan demi keamanan:</b> ${guard.reason}. Foto ditampilkan utuh; pilih mode Foto Utuh atau atur 4 sudut manual.`;
+      return;
+    }
+  }
 
   if (corners.found) {
     const srcCtx = loadedScanImage.getContext('2d');
@@ -5048,316 +5075,239 @@ function render3DBarChartCard(title, categories, total) {
   return renderChartCardWithLegend(title, svg, categories, total);
 }
 
-// ==================== PIE & DONAT 3D "EXPLODED" (IRISAN TERPISAH, PERSPEKTIF MIRING) ====================
-// Dirender sebagai SVG murni (string) supaya tetap ikut alur cetak / ekspor yang sudah ada.
-// Geometri 3D dihitung manual (proyeksi miring ~40°), urutan gambar memakai painter's algorithm
-// dari bagian terjauh ke terdekat. Setiap irisan punya: permukaan atas, dinding luar, dinding dalam (donat),
-// dan dinding potongan radial yang tampak karena irisan dijauhkan dari pusat.
-let __kauChartUid = 0;
+// ============================================================================
+// GRAFIK PIE 3D & DONAT 3D — IRISAN TERPISAH (EXPLODED 3D SLICES)
+// SVG murni (tanpa library) → tetap aman untuk innerHTML, preview, dan cetak.
+// ----------------------------------------------------------------------------
+// Model: tiap irisan = solid ekstrusi di bidang datar (x, w) dengan tinggi z.
+// Proyeksi miring:  X = cx + x ,  Y = cy + K*w - z   (K = sin(sudut pandang))
+// Painter's algorithm: irisan terjauh (w kecil/belakang) digambar lebih dulu;
+// di dalam satu irisan: dinding dalam → dinding radial → dinding luar → atas.
+// ============================================================================
+let __c3dUid = 0;
 
-function kauHexToRgb(hex) {
+function c3dShade(hex, amt) {            // amt > 0 : terangkan, amt < 0 : gelapkan
   let h = String(hex || '#888888').replace('#', '');
-  if (h.length === 3) h = h.split('').map(c => c + c).join('');
-  return [parseInt(h.slice(0, 2), 16) || 0, parseInt(h.slice(2, 4), 16) || 0, parseInt(h.slice(4, 6), 16) || 0];
-}
-function kauMixHex(hex, targetHex, t) {
-  const a = kauHexToRgb(hex), b = kauHexToRgb(targetHex);
-  return '#' + [0, 1, 2].map(i => Math.max(0, Math.min(255, Math.round(a[i] + (b[i] - a[i]) * t))).toString(16).padStart(2, '0')).join('');
-}
-// f < 1 => gelapkan, f > 1 => terangkan
-function kauShadeHex(hex, f) {
-  return f <= 1 ? kauMixHex(hex, '#000000', 1 - f) : kauMixHex(hex, '#ffffff', Math.min(1, f - 1));
+  if (h.length === 3) h = h.split('').map(x => x + x).join('');
+  const n = parseInt(h, 16);
+  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  if (amt >= 0) { r += (255 - r) * amt; g += (255 - g) * amt; b += (255 - b) * amt; }
+  else { r *= 1 + amt; g *= 1 + amt; b *= 1 + amt; }
+  const c = v => Math.max(0, Math.min(255, Math.round(v)));
+  return `rgb(${c(r)},${c(g)},${c(b)})`;
 }
 
-function build3DExplodedChartSVG(categories, total, opts = {}) {
-  const uid = 'k3d' + (++__kauChartUid);
-  const donut = !!opts.donut;
-  const centerSubLabel = opts.centerSubLabel || '';
+function c3dExplodedChart(categories, total, o) {
+  const { cx, cy, R, r = 0, depth: D, k: K, explode: E } = o;
+  const uid = ++__c3dUid;
+  const PI = Math.PI, TWO_PI = PI * 2;
+  const LIGHT = Math.atan2(0.75, -0.55);              // cahaya dari kiri-atas-depan
+  const f1 = v => v.toFixed(1);
 
-  // ---- Kamera & dimensi dunia ----
-  const W = 460, H = 300;
-  const cx = W / 2, cy = 168;
-  const ELEV = 40 * Math.PI / 180;          // sudut pandang dari atas
-  const K = Math.sin(ELEV);                  // rasio elips (kedalaman bidang datar)
-  const CZ = Math.cos(ELEV);                 // faktor proyeksi tinggi vertikal
-  const R = 146;                             // radius luar
-  const RI = donut ? R * 0.44 : 0;           // radius lubang donat
-  const T = 30;                              // ketebalan ekstrusi (dunia)
-  const TH = T * CZ;                         // tinggi ekstrusi di layar
-  const GAP = R * 0.15;                      // jarak renggang radial antar irisan
-  const f1 = v => (Math.round(v * 10) / 10).toString();
-
-  const sumVals = categories.reduce((s, c) => s + (c.val > 0 ? c.val : 0), 0);
+  // ---------- data → irisan ----------
   const nonZero = categories.filter(c => c.val > 0);
-
-  const defs = [];
-  defs.push(`<filter id="${uid}-blur" x="-40%" y="-40%" width="180%" height="190%"><feGaussianBlur stdDeviation="7"/></filter>`);
-  defs.push(`<filter id="${uid}-blur2" x="-40%" y="-40%" width="180%" height="190%"><feGaussianBlur stdDeviation="2.4"/></filter>`);
-  defs.push(`<linearGradient id="${uid}-vo" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.22"/><stop offset="0.12" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.30"/></linearGradient>`);
-
-  // ---- Keadaan kosong ----
-  if (total <= 0 || sumVals <= 0 || nonZero.length === 0) {
-    const base = '#cbd5e1';
-    const ell = (rx, ry, y) => `<ellipse cx="${cx}" cy="${y}" rx="${rx}" ry="${ry}"`;
-    return `
-      <svg class="chart-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Belum ada data">
-        <defs>${defs.join('')}</defs>
-        ${ell(R * 0.98, R * K * 0.98, cy + 8)} fill="#000" opacity="0.28" filter="url(#${uid}-blur)"/>
-        <path d="M ${cx - R} ${cy} A ${R} ${R * K} 0 0 0 ${cx + R} ${cy} L ${cx + R} ${f1(cy - TH)} L ${cx - R} ${f1(cy - TH)} Z" fill="${kauShadeHex(base, 0.7)}"/>
-        ${ell(R, R * K, f1(cy - TH))} fill="${base}" stroke="#94a3b8" stroke-width="1"/>
-        ${ell(R, R * K, f1(cy))} fill="none"/>
-        <text x="${cx}" y="${f1(cy - TH + 4)}" text-anchor="middle" font-size="13" font-weight="700" fill="#475569">Belum Ada Data</text>
-      </svg>`;
-  }
-
-  const single = nonZero.length === 1;
-  const TAU = Math.PI * 2;
-  const LIGHT = (() => { const x = -0.8, y = 0.3, l = Math.hypot(x, y); return [x / l, y / l]; })();
-  const shadeFactor = (nx, ny, inner = false) => {
-    const d = nx * LIGHT[0] + ny * LIGHT[1];
-    const f = 0.66 + 0.28 * d;
-    return Math.max(0.46, Math.min(0.96, f)) * (inner ? 0.88 : 1);
-  };
-
-  // ---- Bangun irisan ----
-  let cur = -Math.PI / 2;
-  const slices = nonZero.map((c, idx) => {
-    const sweep = (c.val / sumVals) * TAU;
-    const s = { c, idx, a0: cur, a1: cur + sweep, sweep, mid: cur + sweep / 2 };
-    s.ox = single ? 0 : GAP * Math.cos(s.mid);
-    s.oy = single ? 0 : GAP * K * Math.sin(s.mid);
+  const empty = total <= 0 || nonZero.length === 0;
+  const src = empty ? [{ label: '', val: 1, color: { front: '#cbd5e1' } }] : nonZero;
+  const sum = empty ? 1 : total;
+  const gap = src.length > 1 ? E : 0;
+  let cur = -PI / 2;
+  const slices = src.map((c, i) => {
+    const sweep = (c.val / sum) * TWO_PI;
+    const s = { ...c, i, a0: cur, a1: cur + sweep, pct: Math.round((c.val / sum) * 100) };
+    s.mid = (s.a0 + s.a1) / 2;
+    s.ox = gap * Math.cos(s.mid);                     // offset radial (renggang)
+    s.ow = gap * Math.sin(s.mid);
     cur += sweep;
     return s;
   });
 
-  const P = (ox, oy, r, th, z) => [cx + ox + r * Math.cos(th), cy + oy + K * r * Math.sin(th) - z * CZ];
-  const pt = p => `${f1(p[0])} ${f1(p[1])}`;
-  const arcTo = (r, large, sweepFlag, p) => `A ${f1(r)} ${f1(r * K)} 0 ${large} ${sweepFlag} ${pt(p)}`;
-
-  // Pecah irisan lebar menjadi potongan <= 100° agar urutan painter's algorithm tetap benar
-  const pieces = [];
-  slices.forEach(s => {
-    const n = Math.max(1, Math.ceil(s.sweep / (100 * Math.PI / 180)));
-    for (let i = 0; i < n; i++) {
-      const a0 = s.a0 + (s.sweep * i) / n;
-      const a1 = s.a0 + (s.sweep * (i + 1)) / n;
-      const mid = (a0 + a1) / 2;
-      const rMid = (RI + R) / 2;
-      pieces.push({
-        s, a0, a1, mid,
-        first: i === 0, last: i === n - 1,
-        depth: s.oy + K * rMid * Math.sin(mid)
-      });
-    }
-  });
-  pieces.sort((p, q) => p.depth - q.depth);
-
-  // Interval sudut di mana sin(theta) memenuhi syarat (depan: > 0, belakang: < 0)
-  const intervals = (a0, a1, front) => {
+  // ---------- helper geometri ----------
+  const pts = (a0, a1, rad, ox, ow, z) => {
+    const n = Math.max(2, Math.ceil(Math.abs(a1 - a0) / 0.06));
     const out = [];
-    for (let k = -2; k <= 2; k++) {
-      const lo0 = front ? k * TAU : k * TAU + Math.PI;
-      const lo = Math.max(a0, lo0), hi = Math.min(a1, lo0 + Math.PI);
-      if (hi - lo > 1e-4) out.push([lo, hi]);
+    for (let i = 0; i <= n; i++) {
+      const t = a0 + (a1 - a0) * i / n;
+      out.push([cx + ox + rad * Math.cos(t), cy + K * (ow + rad * Math.sin(t)) - z]);
     }
     return out;
   };
-
-  // ---- Gradien per irisan (permukaan atas & kilau) ----
-  slices.forEach(s => {
-    const base = s.c.color.front;
-    const id = `${uid}-s${s.idx}`;
-    s.id = id;
-    const x0 = cx + s.ox - R, y0 = cy + s.oy - K * R - TH;
-    const x1 = cx + s.ox + R, y1 = cy + s.oy + K * R - TH;
-    defs.push(`<linearGradient id="${id}-top" gradientUnits="userSpaceOnUse" x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}">
-      <stop offset="0" stop-color="${kauShadeHex(base, 1.28)}"/><stop offset="0.5" stop-color="${base}"/><stop offset="1" stop-color="${kauShadeHex(base, 0.86)}"/></linearGradient>`);
-    const gx = cx + s.ox - R * 0.32, gy = cy + s.oy - K * R * 0.42 - TH;
-    defs.push(`<radialGradient id="${id}-gloss" gradientUnits="userSpaceOnUse" cx="${f1(gx)}" cy="${f1(gy)}" r="${f1(R * 0.95)}">
-      <stop offset="0" stop-color="#fff" stop-opacity="0.58"/><stop offset="0.5" stop-color="#fff" stop-opacity="0.14"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>`);
-  });
-
-  let shadowSvg = '', body = '';
-  const sectorPath = (ox, oy, a0, a1, z, dx = 0, dy = 0) => {
-    const large = (a1 - a0) > Math.PI ? 1 : 0;
-    const sh = p => [p[0] + dx, p[1] + dy];
-    const A = sh(P(ox, oy, R, a0, z)), B = sh(P(ox, oy, R, a1, z));
-    let d = `M ${pt(A)} ${arcTo(R, large, 1, B)}`;
-    if (RI > 0) {
-      d += ` L ${pt(sh(P(ox, oy, RI, a1, z)))} ${arcTo(RI, large, 0, sh(P(ox, oy, RI, a0, z)))} Z`;
-    } else {
-      d += ` L ${pt(sh(P(ox, oy, 0, a0, z)))} Z`;
-    }
-    return d;
+  const path = (p) => 'M ' + p.map(q => f1(q[0]) + ' ' + f1(q[1])).join(' L ') + ' Z';
+  const isFull = s => (s.a1 - s.a0) > TWO_PI - 1e-3;
+  const facePath = (s, z) => {
+    const outer = pts(s.a0, s.a1, R, s.ox, s.ow, z);
+    if (isFull(s)) return path(outer) + (r > 0 ? ' ' + path(pts(s.a0, s.a1, r, s.ox, s.ow, z)) : '');
+    const inner = r > 0 ? pts(s.a1, s.a0, r, s.ox, s.ow, z) : [[cx + s.ox, cy + K * s.ow - z]];
+    return path(outer.concat(inner));
   };
-
-  // ---- Bayangan lembut di bidang datar (digambar paling awal) ----
-  let shSoft = '', shTight = '';
-  pieces.forEach(pc => {
-    shSoft += `<path d="${sectorPath(pc.s.ox, pc.s.oy, pc.a0, pc.a1, 0, 13, 8)}" fill="#0f172a" stroke="#0f172a" stroke-width="1"/>`;
-    shTight += `<path d="${sectorPath(pc.s.ox, pc.s.oy, pc.a0, pc.a1, 0, 3, 2.5)}" fill="#0f172a" stroke="#0f172a" stroke-width="1"/>`;
-  });
-  shadowSvg = `<g filter="url(#${uid}-blur)" opacity="0.30">${shSoft}</g><g filter="url(#${uid}-blur2)" opacity="0.42">${shTight}</g>`;
-
-  // ---- Gambar tiap potongan: dinding dalam -> dinding potongan -> dinding luar -> permukaan atas ----
-  let gradCount = 0;
-  const wallGradient = (r, s, e, baseHex, inner) => {
-    // gradien horizontal (objectBoundingBox) dihitung dari pencahayaan di sepanjang busur dinding
-    const m = Math.max(2, Math.ceil((e - s) / 0.1) + 1);
-    const samples = [];
-    for (let i = 0; i < m; i++) {
-      const th = s + ((e - s) * i) / (m - 1);
-      const x = Math.cos(th);
-      const nx = inner ? -Math.cos(th) : Math.cos(th);
-      const ny = inner ? -Math.sin(th) : Math.sin(th);
-      samples.push({ x, col: kauShadeHex(baseHex, shadeFactor(nx, ny, inner)) });
-    }
-    const xs = samples.map(v => v.x);
-    const xMin = Math.min(...xs), xMax = Math.max(...xs);
-    if (xMax - xMin < 1e-3) return { solid: samples[0].col };
-    samples.sort((p, q) => p.x - q.x);
-    const id = `${uid}-w${gradCount++}`;
-    const stops = samples.map(v => `<stop offset="${((v.x - xMin) / (xMax - xMin)).toFixed(3)}" stop-color="${v.col}"/>`).join('');
-    defs.push(`<linearGradient id="${id}" x1="0" y1="0" x2="1" y2="0">${stops}</linearGradient>`);
-    return { id };
+  const clip = (a0, a1, lo, hi) => {
+    const s = Math.max(a0, lo), e = Math.min(a1, hi);
+    return e - s > 1e-4 ? [s, e] : null;
   };
+  const wallAmt = (phi, extra = 0) => -0.46 + 0.34 * ((Math.cos(phi - LIGHT) + 1) / 2) + extra;
 
-  const wallPath = (ox, oy, r, s, e) => {
-    const t0 = P(ox, oy, r, s, T), t1 = P(ox, oy, r, e, T);
-    const b0 = P(ox, oy, r, s, 0), b1 = P(ox, oy, r, e, 0);
-    return {
-      fill: `M ${pt(t0)} ${arcTo(r, 0, 1, t1)} L ${pt(b1)} ${arcTo(r, 0, 0, b0)} Z`,
-      topEdge: `M ${pt(t0)} ${arcTo(r, 0, 1, t1)}`
-    };
-  };
-
-  pieces.forEach(pc => {
-    const s = pc.s, base = s.c.color.front, ox = s.ox, oy = s.oy;
+  // dinding lengkung (silinder luar / dalam) — dibagi strip agar shading mengikuti arah normal
+  const curvedWall = (s, rad, a0, a1, inside) => {
+    const top = pts(a0, a1, rad, s.ox, s.ow, D);
+    const bot = pts(a0, a1, rad, s.ox, s.ow, 0);
+    const n = top.length - 1;
     let g = '';
-    // tumpang tindih sangat kecil antar potongan satu irisan (menghapus garis anti-alias di sambungan)
-    const a1x = pc.last ? pc.a1 : pc.a1 + 0.014;
+    for (let i = 0; i < n; i++) {
+      const tm = a0 + (a1 - a0) * (i + 0.5) / n;
+      const col = c3dShade(s.color.front, wallAmt(inside ? tm + PI : tm, inside ? -0.08 : 0));
+      const d = `M ${f1(top[i][0])} ${f1(top[i][1])} L ${f1(top[i + 1][0])} ${f1(top[i + 1][1])} L ${f1(bot[i + 1][0])} ${f1(bot[i + 1][1])} L ${f1(bot[i][0])} ${f1(bot[i][1])} Z`;
+      g += `<path d="${d}" fill="${col}" stroke="${col}" stroke-width="0.7" stroke-linejoin="round"/>`;
+    }
+    const sil = path(top.concat(bot.slice().reverse()));       // overlay gradasi vertikal (gelap ke bawah)
+    g += `<path d="${sil}" fill="url(#c3dWV${uid})"/>`;
+    return g;
+  };
 
-    // 1) dinding dalam donat (sisi belakang lubang yang menghadap penonton)
-    if (RI > 0) {
-      intervals(pc.a0, a1x, false).forEach(([a, b]) => {
-        const wp = wallPath(ox, oy, RI, a, b);
-        const gr = wallGradient(RI, a, b, base, true);
-        const fill = gr.solid ? gr.solid : `url(#${gr.id})`;
-        g += `<path d="${wp.fill}" fill="${fill}"/><path d="${wp.fill}" fill="url(#${uid}-vo)"/>`;
+  // dinding radial (bidang potong irisan) — terlihat jika normalnya menghadap penonton
+  const radialWall = (s, a, isStart) => {
+    const nx = isStart ? Math.sin(a) : -Math.sin(a);
+    const nw = isStart ? -Math.cos(a) : Math.cos(a);
+    if (nw <= 0.001) return '';
+    const rin = r > 0 ? r : 0;
+    const P = (rad, z) => [cx + s.ox + rad * Math.cos(a), cy + K * (s.ow + rad * Math.sin(a)) - z];
+    const q = [P(rin, D), P(R, D), P(R, 0), P(rin, 0)];
+    const col = c3dShade(s.color.front, wallAmt(Math.atan2(nw, nx), -0.06));
+    return `<path d="${path(q)}" fill="${col}" stroke="${col}" stroke-width="0.7" stroke-linejoin="round"/>` +
+           `<path d="${path(q)}" fill="url(#c3dWV${uid})"/>`;
+  };
+
+  // ---------- defs ----------
+  let defs = `
+    <linearGradient id="c3dWV${uid}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.30"/>
+    </linearGradient>
+    <filter id="c3dBlurL${uid}" x="-25%" y="-40%" width="150%" height="190%"><feGaussianBlur stdDeviation="6"/></filter>
+    <filter id="c3dBlurS${uid}" x="-15%" y="-25%" width="130%" height="150%"><feGaussianBlur stdDeviation="1.8"/></filter>`;
+
+  // ---------- bayangan lembut di bidang datar ----------
+  let shadowSoft = '', shadowContact = '';
+  slices.forEach(s => {
+    const base = facePath(s, 0);
+    shadowSoft += `<path d="${base}" transform="translate(17 8)" fill="#0f172a" fill-opacity="0.30" fill-rule="evenodd"/>` +
+                  `<path d="${base}" transform="translate(8 4)" fill="#0f172a" fill-opacity="0.18" fill-rule="evenodd"/>`;
+    shadowContact += `<path d="${base}" transform="translate(2 2)" fill="#0f172a" fill-opacity="0.38" fill-rule="evenodd"/>`;
+  });
+  let body = `<g filter="url(#c3dBlurL${uid})">${shadowSoft}</g><g filter="url(#c3dBlurS${uid})">${shadowContact}</g>`;
+
+  // ---------- gambar irisan (terjauh → terdekat) ----------
+  const order = slices.slice().sort((a, b) => (Math.sin(a.mid) - Math.sin(b.mid)) || (Math.cos(a.mid) - Math.cos(b.mid)));
+  order.forEach(s => {
+    const col = s.color.front;
+    const full = isFull(s);
+    let g = '';
+
+    // 1) dinding dalam (donat) — terlihat di sisi belakang lubang
+    if (r > 0) {
+      [clip(s.a0, s.a1, -PI / 2, 0), clip(s.a0, s.a1, PI, 1.5 * PI)].forEach(rg => {
+        if (rg) g += curvedWall(s, r, rg[0], rg[1], true);
       });
     }
-
-    // 2) dinding potongan radial (tampak karena irisan terpisah)
-    const cutFace = (theta, nx, ny) => {
-      const p1 = P(ox, oy, RI, theta, T), p2 = P(ox, oy, R, theta, T);
-      const p3 = P(ox, oy, R, theta, 0), p4 = P(ox, oy, RI, theta, 0);
-      const col = kauShadeHex(base, shadeFactor(nx, ny) * 0.92);
-      const d = `M ${pt(p1)} L ${pt(p2)} L ${pt(p3)} L ${pt(p4)} Z`;
-      g += `<path d="${d}" fill="${col}" stroke="${col}" stroke-width="0.6" stroke-linejoin="round"/>`
-        + `<path d="${d}" fill="url(#${uid}-vo)"/>`
-        + `<path d="M ${pt(p1)} L ${pt(p2)}" stroke="#fff" stroke-opacity="0.45" stroke-width="1" fill="none"/>`;
-    };
-    if (!single) {
-      if (pc.first && Math.cos(pc.a0) < -0.02) cutFace(pc.a0, Math.sin(pc.a0), -Math.cos(pc.a0));
-      if (pc.last && Math.cos(pc.a1) > 0.02) cutFace(pc.a1, -Math.sin(pc.a1), Math.cos(pc.a1));
-    }
-
+    // 2) dinding radial (sisi potong irisan yang menghadap depan)
+    if (!full) { g += radialWall(s, s.a0, true); g += radialWall(s, s.a1, false); }
     // 3) dinding luar (sisi depan)
-    intervals(pc.a0, a1x, true).forEach(([a, b]) => {
-      const wp = wallPath(ox, oy, R, a, b);
-      const gr = wallGradient(R, a, b, base, false);
-      const fill = gr.solid ? gr.solid : `url(#${gr.id})`;
-      g += `<path d="${wp.fill}" fill="${fill}" stroke="${fill}" stroke-width="0.5"/>`
-        + `<path d="${wp.fill}" fill="url(#${uid}-vo)"/>`
-        + `<path d="${wp.topEdge}" fill="none" stroke="#fff" stroke-opacity="0.55" stroke-width="1.1"/>`;
-    });
+    const rgOut = clip(s.a0, s.a1, 0, PI);
+    if (rgOut) g += curvedWall(s, R, rgOut[0], rgOut[1], false);
 
-    // 4) permukaan atas + kilau (glossy)
-    const topD = sectorPath(ox, oy, pc.a0, a1x, T);
-    const clipId = `${uid}-c${gradCount++}`;
-    defs.push(`<clipPath id="${clipId}"><path d="${topD}"/></clipPath>`);
-    g += `<path d="${topD}" fill="url(#${s.id}-top)"/>`
-      + `<path d="${topD}" fill="url(#${s.id}-gloss)"/>`;
-    // kilau tepi atas: sepanjang busur luar & tepi radial irisan
-    const large = (a1x - pc.a0) > Math.PI ? 1 : 0;
-    const arcD = `M ${pt(P(ox, oy, R, pc.a0, T))} ${arcTo(R, large, 1, P(ox, oy, R, a1x, T))}`;
-    g += `<g clip-path="url(#${clipId})" fill="none">`
-      + `<path d="${arcD}" stroke="#fff" stroke-opacity="0.50" stroke-width="5"/>`
-      + `<path d="${arcD}" stroke="#fff" stroke-opacity="0.85" stroke-width="1.4"/>`;
-    if (!single) {
-      if (pc.first) g += `<path d="M ${pt(P(ox, oy, RI, pc.a0, T))} L ${pt(P(ox, oy, R, pc.a0, T))}" stroke="#fff" stroke-opacity="0.35" stroke-width="3"/>`;
-      if (pc.last) g += `<path d="M ${pt(P(ox, oy, RI, pc.a1, T))} L ${pt(P(ox, oy, R, pc.a1, T))}" stroke="#fff" stroke-opacity="0.22" stroke-width="3"/>`;
+    // 4) permukaan atas: gradasi pencahayaan + kilau + rim highlight
+    const outerTop = pts(s.a0, s.a1, R, s.ox, s.ow, D);
+    const xs = outerTop.map(p => p[0]), ys = outerTop.map(p => p[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const top = facePath(s, D);
+    defs += `
+      <linearGradient id="c3dT${uid}_${s.i}" gradientUnits="userSpaceOnUse" x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}">
+        <stop offset="0" stop-color="${c3dShade(col, 0.34)}"/>
+        <stop offset="0.5" stop-color="${c3dShade(col, 0.04)}"/>
+        <stop offset="1" stop-color="${c3dShade(col, -0.14)}"/>
+      </linearGradient>
+      <linearGradient id="c3dG${uid}_${s.i}" gradientUnits="userSpaceOnUse" x1="${f1((x0 + x1) / 2)}" y1="${f1(y0)}" x2="${f1((x0 + x1) / 2)}" y2="${f1(y0 + (y1 - y0) * 0.75)}">
+        <stop offset="0" stop-color="#ffffff" stop-opacity="0.50"/>
+        <stop offset="0.55" stop-color="#ffffff" stop-opacity="0.10"/>
+        <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+      </linearGradient>`;
+    g += `<path d="${top}" fill="url(#c3dT${uid}_${s.i})" fill-rule="evenodd"/>`;
+    g += `<path d="${top}" fill="url(#c3dG${uid}_${s.i})" fill-rule="evenodd"/>`;
+    g += `<path d="${top}" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="0.9" stroke-linejoin="round"/>`;
+
+    // kilau spekular pada tepi atas yang menghadap cahaya
+    const steps = Math.max(6, Math.ceil((s.a1 - s.a0) / 0.06));
+    let run = [];
+    const flush = () => {
+      if (run.length > 2) g += `<path d="M ${run.map(q => f1(q[0]) + ' ' + f1(q[1])).join(' L ')}" fill="none" stroke="#ffffff" stroke-opacity="0.65" stroke-width="2.2" stroke-linecap="round"/>`;
+      run = [];
+    };
+    for (let j = 0; j <= steps; j++) {
+      const t = s.a0 + (s.a1 - s.a0) * j / steps;
+      if (Math.cos(t - LIGHT) > 0.30) {
+        run.push([cx + s.ox + (R - 2.5) * Math.cos(t), cy + K * (s.ow + (R - 2.5) * Math.sin(t)) - D]);
+      } else flush();
     }
-    g += `</g>`;
-
+    flush();
     body += `<g>${g}</g>`;
   });
 
-  // ---- Label persentase / jumlah ----
-  // Irisan besar: label di atas permukaan. Irisan kecil (<9%): label di luar grafik dengan garis penunjuk.
-  let labels = '', leaders = '';
-  const pill = (x, y, txt) => {
-    const bw = Math.max(48, txt.length * 6.2 + 12);
-    return `
-      <rect x="${f1(x - bw / 2)}" y="${f1(y - 9.5)}" width="${f1(bw)}" height="18" rx="5" fill="#ffffff" fill-opacity="0.96" stroke="#94a3b8" stroke-width="0.7"/>
-      <text x="${f1(x)}" y="${f1(y + 3.5)}" text-anchor="middle" font-size="10.5" font-weight="800" fill="#0f172a">${txt}</text>`;
-  };
-  const placed = [];
+  // ---------- label persentase / jumlah ----------
+  let labels = '';
   slices.forEach(s => {
-    const pct = Math.round((s.c.val / total) * 100);
-    const txt = `${s.c.val} (${pct}%)`;
-    const small = !single && pct < 9;
-    if (!small) {
-      const rLab = donut ? (RI + R) / 2 : R * 0.62;
-      const p = P(s.ox, s.oy, rLab, s.mid, T);
-      labels += pill(p[0], p[1], txt);
+    if (empty) {
+      if (r > 0) return;   // donat kosong: teks tengah sudah cukup
+      labels += `<text x="${cx}" y="${f1(cy - D + 4)}" text-anchor="middle" font-size="12" font-weight="800" fill="#475569" stroke="#fff" stroke-width="3" paint-order="stroke">Belum Ada Data</text>`;
       return;
     }
-    // label luar: di luar dinding, searah sudut tengah irisan
-    const rim = P(s.ox, s.oy, R, s.mid, T);
-    let out = P(s.ox, s.oy, R + 30, s.mid, T / 2);
-    let lx = out[0], ly = out[1];
-    // geser menjauh bila bertabrakan dengan label luar lain
-    for (let guard = 0; guard < 6; guard++) {
-      const hit = placed.find(q => Math.abs(q[0] - lx) < 54 && Math.abs(q[1] - ly) < 20);
-      if (!hit) break;
-      const dir = Math.sin(s.mid) >= 0 ? 1 : -1;
-      ly += dir * 20;
+    const txt = `${s.val} (${s.pct}%)`;
+    const bw = txt.length * 6.1 + 12;
+    const roomOk = s.pct >= 9 || slices.length === 1;
+    if (roomOk) {
+      const rad = r > 0 ? (R + r) / 2 : R * 0.62;
+      const lx = cx + s.ox + rad * Math.cos(s.mid);
+      const ly = cy + K * (s.ow + rad * Math.sin(s.mid)) - D;
+      labels += `
+        <rect x="${f1(lx - bw / 2)}" y="${f1(ly - 9)}" width="${f1(bw)}" height="17" rx="4" fill="#ffffff" fill-opacity="0.94" stroke="#94a3b8" stroke-width="0.7"/>
+        <text x="${f1(lx)}" y="${f1(ly + 3.5)}" text-anchor="middle" font-size="10" font-weight="800" fill="#0f172a">${txt}</text>`;
+    } else {
+      // irisan sempit → label di luar irisan
+      const rad = R + gap + 8;
+      const front = Math.sin(s.mid) > 0;
+      const lx = cx + s.ox + rad * Math.cos(s.mid);
+      const ly = cy + K * (s.ow + rad * Math.sin(s.mid)) - (front ? 0 : D) + (front ? 12 : -4);
+      const c = Math.cos(s.mid);
+      const anchor = c > 0.25 ? 'start' : (c < -0.25 ? 'end' : 'middle');
+      labels += `<text x="${f1(lx)}" y="${f1(ly)}" text-anchor="${anchor}" font-size="10" font-weight="800" fill="#0f172a" stroke="#fff" stroke-width="3" paint-order="stroke">${txt}</text>`;
     }
-    lx = Math.max(34, Math.min(W - 34, lx));
-    ly = Math.max(14, Math.min(H - 12, ly));
-    placed.push([lx, ly]);
-    leaders += `<path d="M ${f1(rim[0])} ${f1(rim[1])} L ${f1(lx)} ${f1(ly)}" stroke="#475569" stroke-width="0.9" fill="none"/><circle cx="${f1(rim[0])}" cy="${f1(rim[1])}" r="2" fill="#fff" stroke="#475569" stroke-width="0.9"/>`;
-    labels += pill(lx, ly, txt);
   });
 
-  let centerTxt = '';
-  if (donut) {
-    centerTxt = `
-      <text x="${cx}" y="${f1(cy - 1)}" text-anchor="middle" font-size="20" font-weight="800" fill="#1e3a8a">${total}</text>
-      <text x="${cx}" y="${f1(cy + 14)}" text-anchor="middle" font-size="10.5" font-weight="600" fill="#475569">${centerSubLabel}</text>`;
-  }
-
-  return `
-    <svg class="chart-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Grafik ${donut ? 'donat' : 'pie'} 3D" style="overflow:visible">
-      <defs>${defs.join('')}</defs>
-      ${shadowSvg}
-      ${body}
-      ${leaders}
-      ${labels}
-      ${centerTxt}
-    </svg>`;
+  return `<defs>${defs}</defs>${body}${labels}`;
 }
 
-// 2. Grafik Pie 3D Exploded (Khusus Benar-Salah)
+// 2. Grafik Pie / Lingkaran 3D — irisan terpisah (Khusus Benar-Salah)
 function render3DPieChartCard(title, categories, total) {
-  const svg = build3DExplodedChartSVG(categories, total, { donut: false });
+  const W = 420, H = 258;
+  const inner = c3dExplodedChart(categories, total, {
+    cx: W / 2, cy: 142, R: 122, r: 0, depth: 28, k: 0.6, explode: 15
+  });
+  const svg = `
+    <svg class="chart-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+      ${inner}
+    </svg>`;
   return renderChartCardWithLegend(title, svg, categories, total);
 }
 
-// 3. Grafik Donat 3D Exploded (Khusus Soal Uraian)
+// 3. Grafik Donat 3D — irisan terpisah (Khusus Soal Uraian)
 function render3DDonutChartCard(title, categories, total, centerSubLabel = 'Soal Uraian') {
-  const svg = build3DExplodedChartSVG(categories, total, { donut: true, centerSubLabel });
+  const W = 420, H = 258, cy = 142;
+  const inner = c3dExplodedChart(categories, total, {
+    cx: W / 2, cy, R: 122, r: 66, depth: 28, k: 0.6, explode: 15
+  });
+  const svg = `
+    <svg class="chart-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+      ${inner}
+      <text x="${W / 2}" y="${cy - 17}" text-anchor="middle" font-size="19" font-weight="800" fill="#1e3a8a" stroke="#fff" stroke-width="3" paint-order="stroke">${total}</text>
+      <text x="${W / 2}" y="${cy - 3}" text-anchor="middle" font-size="10" font-weight="700" fill="#475569" stroke="#fff" stroke-width="3" paint-order="stroke">${centerSubLabel}</text>
+    </svg>`;
   return renderChartCardWithLegend(title, svg, categories, total);
 }
 
@@ -5465,7 +5415,7 @@ function switchReport(repId, btnEl) {
   renderReport();
 }
 
-function buildReportHTML(repId) {
+function buildReportHTMLRaw(repId) {
   const res = computeAllAnalytics();
   const m = state.meta;
   const headerKop = `
@@ -5881,6 +5831,54 @@ function buildReportHTML(repId) {
   return '';
 }
 
+
+// Statistik ringkas otomatis di kaki tabel untuk kolom yang memuat skor/nilai.
+function buildReportHTML(repId) {
+  const html = buildReportHTMLRaw(repId);
+  if (!html || typeof document === 'undefined') return html;
+  const holder = document.createElement('div');
+  holder.innerHTML = html;
+  holder.querySelectorAll('table').forEach(table => {
+    if (table.querySelector('tfoot[data-score-summary]')) return;
+    const headerRows = table.querySelectorAll('thead tr');
+    const header = headerRows.length ? headerRows[headerRows.length - 1] : null;
+    if (!header) return;
+    const headers = Array.from(header.cells).map(c => (c.innerText || c.textContent || '').replace(/\s+/g,' ').trim().toLowerCase());
+    const rows = Array.from(table.querySelectorAll('tbody tr'));
+    if (!rows.length) return;
+    const eligible = headers.map((h, idx) => {
+      const wanted = /nilai|skor|rata-rata|tertinggi|terendah|^jumlah$|^u\s*\d+|mapel/i.test(h);
+      const excluded = /(^no$|^no\.|nama|nis|nisn|kelas|guru|peserta|kktp|ketuntasan|status|keterangan|ket\.|validitas|bank soal|tk|dp|r hitung|benar|salah|kosong|ganda|reliabilitas)/i.test(h);
+      return wanted && !excluded && rows.some(row => {
+        const cell = row.cells[idx]; if (!cell) return false;
+        return /^-?\d+(?:[.,]\d+)?(?:\s*\/\s*-?\d+(?:[.,]\d+)?)?$/.test((cell.innerText || cell.textContent || '').trim());
+      });
+    });
+    const firstScore = eligible.findIndex(Boolean);
+    if (firstScore < 0) return;
+    const footer = document.createElement('tfoot'); footer.dataset.scoreSummary = 'true';
+    ['Nilai Tertinggi','Nilai Terendah','Rata-rata'].forEach((label, ri) => {
+      const tr = document.createElement('tr'); tr.style.fontWeight='700'; tr.style.background='#f1f5f9';
+      const labelCell = document.createElement('td'); labelCell.textContent=label; labelCell.colSpan=firstScore || 1; tr.appendChild(labelCell);
+      for (let idx=firstScore; idx<headers.length; idx++) {
+        const td=document.createElement('td'); td.style.textAlign='center';
+        if (eligible[idx]) {
+          const nums=rows.map(row=>{
+            const cell=row.cells[idx]; if(!cell) return null;
+            const match=(cell.innerText||cell.textContent||'').trim().replace(',','.').match(/^(-?\d+(?:\.\d+)?)(?:\s*\/\s*-?\d+(?:\.\d+)?)?$/);
+            return match?Number(match[1]):null;
+          }).filter(Number.isFinite);
+          td.textContent=nums.length?(ri===0?Math.max(...nums):ri===1?Math.min(...nums):nums.reduce((a,b)=>a+b,0)/nums.length).toFixed(2):'-';
+        } else td.textContent='';
+        tr.appendChild(td);
+      }
+      footer.appendChild(tr);
+    });
+    table.appendChild(footer);
+  });
+  return holder.innerHTML;
+}
+
 function renderReport() {
   const container = document.getElementById('reportContainer');
   container.innerHTML = buildReportHTML(currentReportTab);
@@ -6037,5 +6035,8 @@ window.addEventListener('offline', () => {
 
 window.addEventListener('DOMContentLoaded', initApp);
 </script>
+
+<script src="kau-access.js"></script>
+<div id="kauQuotaDialog" style="display:none;position:fixed;inset:0;background:#0008;z-index:99999;align-items:center;justify-content:center;padding:16px"><div style="background:white;border-radius:14px;padding:20px;max-width:420px;width:100%;box-shadow:0 20px 60px #0003"><h3 id="kauQuotaTitle">Batas akses tercapai</h3><p id="kauQuotaInfo"></p><p>Untuk mengajukan penambahan akses, hubungi admin.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" id="kauQuotaWhatsapp">Hubungi Admin via WhatsApp untuk Tambah Akses</button><button class="btn btn-outline" onclick="document.getElementById('kauQuotaDialog').style.display='none'">Tutup</button></div></div></div>
 </body>
 </html>
