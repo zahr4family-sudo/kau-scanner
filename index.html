@@ -521,7 +521,7 @@
           <div><label>Jenjang Sekolah *</label><select id="kauLevel"><option value="SD">SD (Kelas I–VI)</option><option value="SMP">SLTP (Kelas VII–IX)</option><option value="SMA">SLTA (Kelas X–XII)</option></select></div>
           <div style="grid-column:1/-1"><label>Mata Pelajaran Akun</label><input value="Pendidikan Agama Islam (PAI)" readonly aria-readonly="true" /></div>
           <div><label>Nama Guru *</label><input id="kauTeacherName" placeholder="Nama lengkap guru"></div><div><label>NIP Guru</label><input id="kauTeacherNip" placeholder="NIP guru"></div><div><label>Nama Sekolah *</label><input id="kauSchool" placeholder="Nama sekolah"></div><div><label>Gmail aktif *</label><input id="kauEmail" type="email" placeholder="nama@gmail.com"></div><div><label>WhatsApp aktif *</label><input id="kauWhatsapp" placeholder="628xxxxxxxxxx"></div><div><label>Nama Kepala Sekolah *</label><input id="kauKepsek" placeholder="Nama kepala sekolah"></div><div><label>NIP Kepala Sekolah *</label><input id="kauNipKepsek" placeholder="NIP kepala sekolah"></div><div style="grid-column:1/-1"><button class="btn btn-outline btn-sm" onclick="kauSaveHeadmasterNip()">Simpan Perubahan NIP Kepala Sekolah</button></div><div><label>Jenis Guru *</label><select id="kauTeacherRole" onchange="kauToggleProfileFields()"><option value="MAPEL">Guru Mata Pelajaran</option><option value="KELAS">Guru Kelas / Wali Kelas</option></select></div><div id="kauSubjectWrap"><label>Mapel yang diampu *</label><input id="kauSubject" placeholder="Contoh: PAI"></div><div id="kauClassWrap" style="display:none"><label>Kelas yang diampu *</label><input id="kauClassName" placeholder="Contoh: IV-A"></div>
-          <div style="grid-column:1/-1;background:#ecfdf5;padding:10px;border-radius:8px"><b>Identitas guru diambil dari bagian “Data Identitas Ujian” di bawah.</b><br><small>Isi Nama Sekolah, Guru Pengajar, dan NIP Guru satu kali saja. Data tersebut akan dipakai untuk profil akun KAU.</small></div>
+          <div style="grid-column:1/-1;background:#ecfdf5;padding:10px;border-radius:8px"><b>Identitas sekolah dan guru diambil dari profil registrasi.</b><br><small>Nama guru, NIP, sekolah, kepala sekolah, dan NIP kepala sekolah tidak perlu diisi ulang di Data Identitas Ujian.</small></div>
           <div><label>OTP 6 digit</label><input id="kauOtp" inputmode="numeric" maxlength="6" placeholder="Kode dari Gmail"></div>
         </div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn btn-outline" id="kauOtpSendBtn" onclick="kauRequestOtp()">Kirim OTP Gmail</button><button class="btn btn-outline" onclick="kauVerifyOtp()">Verifikasi OTP (pendaftaran pertama)</button><button class="btn btn-primary" onclick="kauRegister()">Daftar Akun Pertama</button><button class="btn btn-outline" onclick="kauLogin()">Login / Muat Profil dengan Gmail</button></div><p id="kauAuthStatus" role="status" style="margin-top:8px"></p>
       </div>
@@ -558,16 +558,14 @@
       <div class="card">
         <h2>1. Data Identitas Ujian (Sheet: data)</h2>
         <div class="grid-2">
-          <div><label>Nama Sekolah</label><input id="inSekolah" value="SDN Nagreg" oninput="saveState()" onchange="saveState()" /></div>
+          <input type="hidden" id="inSekolah" value="SDN Nagreg" />
           <div>
             <label>Mata Pelajaran</label>
             <input id="inMapel" value="PAI" readonly aria-readonly="true" oninput="saveState()" onchange="onIdentityClassOrSubjectEdited()" />
             
           </div>
-          <div><label>Kepala Sekolah</label><input id="inKepsek" value="Aep Sudrajat, S.Pd" oninput="saveState()" onchange="saveState()" /></div>
-          <div><label>NIP Kepala Sekolah</label><input id="inNipKepsek" value="19000000 000000 0 000" oninput="saveState()" onchange="saveState()" /></div>
-          <div><label>Guru Pengajar</label><input id="inGuru" value="Apipudin, S.Pd.I" oninput="saveState()" onchange="saveState()" /></div>
-          <div><label>NIP Guru</label><input id="inNipGuru" value="19000000 000000 0 021" oninput="saveState()" onchange="saveState()" /></div>
+          <input type="hidden" id="inKepsek" value="Aep Sudrajat, S.Pd" /><input type="hidden" id="inNipKepsek" value="19000000 000000 0 000" />
+          <input type="hidden" id="inGuru" value="Apipudin, S.Pd.I" /><input type="hidden" id="inNipGuru" value="19000000 000000 0 021" />
           <div><label>Jenis Tes</label><input id="inJenisTes" value="PENILAIAN SUMATIF AKHIR SEMESTER" oninput="saveState()" onchange="saveState()" /></div>
           <div><label>Materi Pokok</label><input id="inMateri" value="BAB I - BAB V" oninput="saveState()" onchange="saveState()" /></div>
           <div>
