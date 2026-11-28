@@ -1,0 +1,20 @@
+PERBAIKAN KAU SCANNER - PAKET PEMBARUAN
+
+Perubahan dalam paket ini:
+1. Pengamanan akses preview, cetak laporan, dan ekspor laporan melalui helper akses akun (login/session API), bukan hanya tombol.
+2. Pengguna tamu dibatasi input/impornya hingga 10 siswa dan satu sesi kelas; menu multi sesi tamu disembunyikan dan fungsi tambah/duplikasi sesi memiliki pengecekan.
+3. Mode promosi disimpan pada pengaturan server; endpoint akses memerlukan sesi pengguna terdaftar. Promo tidak memberi akses pada pengunjung tanpa sesi.
+4. Pemulihan profil login dilengkapi data jenis guru, mapel/kelas, nama dan NIP kepala sekolah agar profil lebih lengkap dipulihkan pada perangkat berbeda.
+5. Form registrasi telah menghapus kolom Mata Pelajaran Akun.
+6. OTP request dibatasi server 5 menit per Gmail; tombol UI menampilkan countdown 5 menit. Refresh halaman tidak menghapus cooldown browser; server tetap menjadi otoritas cooldown.
+7. Ekspor Excel menggunakan fallback Blob bila XLSX.writeFile gagal.
+8. Print reports pagination diperbaiki.
+
+PENTING:
+- Paket berisi Pages Functions dan harus deploy bersama folder functions. Direct Upload statis saja mungkin tidak mengaktifkan API Functions.
+- Jalankan schema.sql pada D1 jika belum dijalankan atau bila schema berbeda; jangan mengulang migrasi tanpa memeriksa tabel.
+- Fitur OTP memerlukan environment secrets Brevo: BREVO_API_KEY, OTP_FROM_EMAIL, OTP_PEPPER.
+- Admin API memerlukan ADMIN_PASSWORD dan ADMIN_SESSION_SECRET.
+- Binding D1 bernama DB.
+- Perlu tes langsung pada Cloudflare: OTP Gmail, login lintas perangkat, guest 10 siswa, guest preview/cetak/ekspor ditolak, akun promo dapat preview/cetak/ekspor, dan penyimpanan data.
+- Ini adalah pemeriksaan kode dan sintaks, bukan klaim uji end-to-end Cloudflare.

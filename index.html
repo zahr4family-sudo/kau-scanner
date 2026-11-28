@@ -413,8 +413,8 @@
         padding: 4mm 6mm !important;
         page-break-after: always;
         break-after: page;
-        page-break-inside: avoid;
-        break-inside: avoid;
+        page-break-inside: auto !important;
+        break-inside: auto !important;
       }
       #printArea .print-page:last-child {
         page-break-after: auto;
@@ -516,10 +516,9 @@
     <!-- ==================== TAB 1: IDENTITAS & SISWA ==================== -->
     <section id="tab-data" class="tab-page active">
       <div class="card" id="kauAuthCard" style="border:2px solid #a7f3d0;background:#f0fdf4;">
-        <h2>🔐 Registrasi & Verifikasi Akun KAU</h2><p>Pendaftaran pertama: isi profil pada Data Identitas Ujian, WhatsApp, jenjang dan Gmail lalu verifikasi OTP. Mapel akun awal PAI. Login berikutnya cukup menggunakan Gmail.</p>
+        <h2>🔐 Registrasi & Verifikasi Akun KAU</h2><p>Pendaftaran pertama: lengkapi profil guru dan sekolah, lalu verifikasi OTP. Login berikutnya cukup menggunakan Gmail.</p>
         <div class="grid-2">
           <div><label>Jenjang Sekolah *</label><select id="kauLevel"><option value="SD">SD (Kelas I–VI)</option><option value="SMP">SLTP (Kelas VII–IX)</option><option value="SMA">SLTA (Kelas X–XII)</option></select></div>
-          <div style="grid-column:1/-1"><label>Mata Pelajaran Akun</label><input value="Pendidikan Agama Islam (PAI)" readonly aria-readonly="true" /></div>
           <div><label>Nama Guru *</label><input id="kauTeacherName" placeholder="Nama lengkap guru"></div><div><label>NIP Guru</label><input id="kauTeacherNip" placeholder="NIP guru"></div><div><label>Nama Sekolah *</label><input id="kauSchool" placeholder="Nama sekolah"></div><div><label>Gmail aktif *</label><input id="kauEmail" type="email" placeholder="nama@gmail.com"></div><div><label>WhatsApp aktif *</label><input id="kauWhatsapp" placeholder="628xxxxxxxxxx"></div><div><label>Nama Kepala Sekolah *</label><input id="kauKepsek" placeholder="Nama kepala sekolah"></div><div><label>NIP Kepala Sekolah *</label><input id="kauNipKepsek" placeholder="NIP kepala sekolah"></div><div style="grid-column:1/-1"><button class="btn btn-outline btn-sm" onclick="kauSaveHeadmasterNip()">Simpan Perubahan NIP Kepala Sekolah</button></div><div><label>Jenis Guru *</label><select id="kauTeacherRole" onchange="kauToggleProfileFields()"><option value="MAPEL">Guru Mata Pelajaran</option><option value="KELAS">Guru Kelas / Wali Kelas</option></select></div><div id="kauSubjectWrap"><label>Mapel yang diampu *</label><input id="kauSubject" placeholder="Contoh: PAI"></div><div id="kauClassWrap" style="display:none"><label>Kelas yang diampu *</label><input id="kauClassName" placeholder="Contoh: IV-A"></div>
           <div style="grid-column:1/-1;background:#ecfdf5;padding:10px;border-radius:8px"><b>Identitas sekolah dan guru diambil dari profil registrasi.</b><br><small>Nama guru, NIP, sekolah, kepala sekolah, dan NIP kepala sekolah tidak perlu diisi ulang di Data Identitas Ujian.</small></div>
           <div><label>OTP 6 digit</label><input id="kauOtp" inputmode="numeric" maxlength="6" placeholder="Kode dari Gmail"></div>
@@ -5956,6 +5955,7 @@ async function exportKAUExcel() {
   if (typeof XLSX === 'undefined') {
     return alert('Modul Excel belum tersedia. Hubungkan perangkat ke internet, muat ulang aplikasi, lalu coba ekspor kembali.');
   }
+  try {
   const wb = XLSX.utils.book_new();
   const res = computeAllAnalytics();
   const m = state.meta;
@@ -6033,7 +6033,28 @@ async function exportKAUExcel() {
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rekapRows), 'Rekap Antar Kelas');
 
-  XLSX.writeFile(wb, `KAU_${m.kelas.replace(/\W+/g, '_')}_${m.mapel}_${m.sekolah.replace(/\s+/g, '_')}.xlsx`);
+  const safePart = value => String(value || '').replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'Data';
+  const filename = `KAU_${safePart(m.kelas)}_${safePart(m.mapel)}_${safePart(m.sekolah)}.xlsx`;
+  try {
+    // writeFile adalah jalur utama; jika pemicu unduhan browser gagal, gunakan Blob.
+    XLSX.writeFile(wb, filename, { compression: true });
+  } catch (writeError) {
+    const bytes = XLSX.write(wb, { bookType: 'xlsx', type: 'array', compression: true });
+    const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+  } catch (err) {
+    console.error('Ekspor Excel KAU gagal:', err);
+    alert('Ekspor Excel gagal dibuat. Pastikan data siswa dan analisis sudah tersedia, lalu coba lagi. Detail: ' + (err?.message || err));
+  }
 }
 
 // Status koneksi membantu pengguna memahami fitur yang memerlukan jaringan.
