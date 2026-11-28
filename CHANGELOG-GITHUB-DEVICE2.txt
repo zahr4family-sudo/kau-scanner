@@ -1,0 +1,6 @@
+Revisi paket deployment GitHub-first:
+- Dokumentasi deployment melalui repository GitHub yang terhubung ke Cloudflare Pages.
+- Menjelaskan bahwa GitHub Pages biasa tidak menjalankan Pages Functions.
+- Kuota perangkat default disamakan menjadi 2 perangkat untuk semua akun (PAI dan Non-PAI) bila tidak ada override device_quota.
+- Memperbaiki beberapa SQL string literal pada endpoint login dan admin yang mengandung status ACTIVE, promotion_mode, dan kind class.
+- Tetap memakai database D1 kau-access dan binding DB.

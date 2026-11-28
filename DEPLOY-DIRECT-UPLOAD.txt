@@ -1,0 +1,7 @@
+KAU Scanner deployment
+1) Upload folder contents to Cloudflare Pages Direct Upload (root must contain index.html and functions/).
+2) Configure D1 binding DB -> kau-access.
+3) Run schema.sql in D1 SQL console (additive CREATE TABLE / INSERT; do not delete existing data).
+4) Set Pages secrets: ADMIN_PASSWORD, ADMIN_SESSION_SECRET, BREVO_API_KEY, OTP_FROM_EMAIL, OTP_FROM_NAME, OTP_PEPPER.
+5) Promo mode is server-side bypass. In promo mode active-user status/quotas and device-account count bypasses are skipped.
+6) The guest document gate helper kauRequireLoginForDocument() must be wired to Preview/Export controls if those buttons do not already call it.

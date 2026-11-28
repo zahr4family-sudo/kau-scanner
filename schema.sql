@@ -22,3 +22,15 @@ CREATE TABLE IF NOT EXISTS verified_contacts (token_hash TEXT PRIMARY KEY, targe
 CREATE TABLE IF NOT EXISTS access_requests (id TEXT PRIMARY KEY, teacher_id TEXT NOT NULL REFERENCES teachers(id) ON DELETE CASCADE, request_type TEXT NOT NULL, request_data TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING', created_at INTEGER NOT NULL, reviewed_at INTEGER, admin_note TEXT);
 CREATE TABLE IF NOT EXISTS admin_users (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
+-- New global controls and device-login tracking
+CREATE TABLE IF NOT EXISTS device_login_events (id TEXT PRIMARY KEY, fingerprint_hash TEXT NOT NULL, email TEXT NOT NULL, created_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_device_login_events_fp_time ON device_login_events(fingerprint_hash,created_at);
+CREATE TABLE IF NOT EXISTS device_blocks (fingerprint_hash TEXT PRIMARY KEY, blocked_until INTEGER NOT NULL, reason TEXT NOT NULL, updated_at INTEGER NOT NULL);
+INSERT OR IGNORE INTO app_settings(key,value) VALUES('promotion_mode','false');
+INSERT OR IGNORE INTO app_settings(key,value) VALUES('price_class','0');
+INSERT OR IGNORE INTO app_settings(key,value) VALUES('price_subject','0');
+INSERT OR IGNORE INTO app_settings(key,value) VALUES('price_session','0');
+INSERT OR IGNORE INTO app_settings(key,value) VALUES('admin_whatsapp','628xxxxxxxxxx');
+INSERT OR IGNORE INTO app_settings(key,value) VALUES('admin_message_template','Permohonan akses KAU');
+INSERT OR IGNORE INTO app_settings(key,value) VALUES('guest_preview_export_block','true');
