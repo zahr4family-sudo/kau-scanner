@@ -1,0 +1,9 @@
+Perbaikan November 2026
+- Guest dibatasi satu kelas dan maksimal 10 siswa; navigasi selain Data & Kunci disembunyikan.
+- Guest tidak dapat membuat sesi tambahan, menduplikasi kelas, mencetak LJK/laporan, atau mengunduh LJK. Preview Data & Analisis membutuhkan sesi akun aktif.
+- Mode promosi tidak membypass autentikasi dan tidak mengaktifkan akun terblokir. Promotion bypass hanya berlaku bagi user terdaftar yang login.
+- Profil registrasi menyimpan guru, NIP guru, sekolah, WhatsApp, Gmail, nama/NIP kepala sekolah, jenis guru, mapel atau kelas di D1.
+- NIP Kepala Sekolah dapat diperbarui user melalui tombol Simpan Perubahan dan disimpan online. Profil lain dibuat read-only setelah login.
+- Guru dengan mapel PAI mendapat akses khusus bypass kuota kelas/mapel; selain PAI mengikuti kuota.
+- OTP resend cooldown 5 menit di server dan timer di UI, timer dipertahankan saat refresh.
+- D1 lama perlu menjalankan MIGRATION-PROFILE.sql satu kali.

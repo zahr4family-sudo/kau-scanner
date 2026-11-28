@@ -41,3 +41,9 @@ Kuota default perangkat untuk akun baru/akun tanpa override adalah **2 perangkat
 - Tes perangkat ketiga (harus ditolak jika kuota akun masih 2).
 - Tes `https://kau-scanner.pages.dev/api/admin?action=login` hanya sebagai URL API; endpoint login admin menerima POST, bukan halaman HTML. Gunakan `admin.html` untuk UI panel.
 - Jika Functions tidak aktif atau API mengembalikan HTML, deployment belum mengikutsertakan folder `functions` atau binding DB belum terpasang.
+
+
+## Perbaikan profil dan pembatasan tamu (November 2026
+- Untuk D1 yang sudah ada, jalankan `MIGRATION-PROFILE.sql` sekali sebelum deploy kode baru.
+- Mode promosi hanya bypass kuota akun yang telah login/terdaftar; sesi guest tidak memperoleh akses promosi.
+- OTP memiliki masa berlaku dan cooldown pengiriman 5 menit.

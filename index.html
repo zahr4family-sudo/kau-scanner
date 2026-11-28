@@ -520,10 +520,10 @@
         <div class="grid-2">
           <div><label>Jenjang Sekolah *</label><select id="kauLevel"><option value="SD">SD (Kelas I–VI)</option><option value="SMP">SLTP (Kelas VII–IX)</option><option value="SMA">SLTA (Kelas X–XII)</option></select></div>
           <div style="grid-column:1/-1"><label>Mata Pelajaran Akun</label><input value="Pendidikan Agama Islam (PAI)" readonly aria-readonly="true" /></div>
-          <div><label>Gmail aktif *</label><input id="kauEmail" type="email" placeholder="nama@gmail.com"></div><div><label>WhatsApp aktif *</label><input id="kauWhatsapp" placeholder="628xxxxxxxxxx"></div>
+          <div><label>Nama Guru *</label><input id="kauTeacherName" placeholder="Nama lengkap guru"></div><div><label>NIP Guru</label><input id="kauTeacherNip" placeholder="NIP guru"></div><div><label>Nama Sekolah *</label><input id="kauSchool" placeholder="Nama sekolah"></div><div><label>Gmail aktif *</label><input id="kauEmail" type="email" placeholder="nama@gmail.com"></div><div><label>WhatsApp aktif *</label><input id="kauWhatsapp" placeholder="628xxxxxxxxxx"></div><div><label>Nama Kepala Sekolah *</label><input id="kauKepsek" placeholder="Nama kepala sekolah"></div><div><label>NIP Kepala Sekolah *</label><input id="kauNipKepsek" placeholder="NIP kepala sekolah"></div><div style="grid-column:1/-1"><button class="btn btn-outline btn-sm" onclick="kauSaveHeadmasterNip()">Simpan Perubahan NIP Kepala Sekolah</button></div><div><label>Jenis Guru *</label><select id="kauTeacherRole" onchange="kauToggleProfileFields()"><option value="MAPEL">Guru Mata Pelajaran</option><option value="KELAS">Guru Kelas / Wali Kelas</option></select></div><div id="kauSubjectWrap"><label>Mapel yang diampu *</label><input id="kauSubject" placeholder="Contoh: PAI"></div><div id="kauClassWrap" style="display:none"><label>Kelas yang diampu *</label><input id="kauClassName" placeholder="Contoh: IV-A"></div>
           <div style="grid-column:1/-1;background:#ecfdf5;padding:10px;border-radius:8px"><b>Identitas guru diambil dari bagian “Data Identitas Ujian” di bawah.</b><br><small>Isi Nama Sekolah, Guru Pengajar, dan NIP Guru satu kali saja. Data tersebut akan dipakai untuk profil akun KAU.</small></div>
           <div><label>OTP 6 digit</label><input id="kauOtp" inputmode="numeric" maxlength="6" placeholder="Kode dari Gmail"></div>
-        </div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn btn-outline" onclick="kauRequestOtp()">Kirim OTP Gmail</button><button class="btn btn-outline" onclick="kauVerifyOtp()">Verifikasi OTP (pendaftaran pertama)</button><button class="btn btn-primary" onclick="kauRegister()">Daftar Akun Pertama</button><button class="btn btn-outline" onclick="kauLogin()">Login / Muat Profil dengan Gmail</button></div><p id="kauAuthStatus" role="status" style="margin-top:8px"></p>
+        </div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn btn-outline" id="kauOtpSendBtn" onclick="kauRequestOtp()">Kirim OTP Gmail</button><button class="btn btn-outline" onclick="kauVerifyOtp()">Verifikasi OTP (pendaftaran pertama)</button><button class="btn btn-primary" onclick="kauRegister()">Daftar Akun Pertama</button><button class="btn btn-outline" onclick="kauLogin()">Login / Muat Profil dengan Gmail</button></div><p id="kauAuthStatus" role="status" style="margin-top:8px"></p>
       </div>
 
       <div class="card" style="border-color:#93c5fd; background:linear-gradient(to bottom, #eff6ff, #ffffff);">
@@ -1145,7 +1145,7 @@ function normalizeSession(raw, fallbackId) {
     id: raw.id || def.id,
     meta: { ...def.meta, ...(raw.meta || {}) },
     config: { ...def.config, ...(raw.config || {}) },
-    students: Array.isArray(raw.students) ? raw.students.slice(0, MAX_STUDENTS) : def.students
+    students: Array.isArray(raw.students) ? raw.students.slice(0, (localStorage.getItem('kau_access_session')?MAX_STUDENTS:10)) : def.students
   };
   merged.config.paperMode = ['auto_f4', 'f4_2up', 'a4_1up'].includes(merged.config.paperMode) ? merged.config.paperMode : 'auto_f4';
   merged.config.bubbleShape = merged.config.bubbleShape === 'square' ? 'square' : 'circle';
@@ -1377,6 +1377,7 @@ function cloneRosterClean(studentsList) {
 }
 
 async function createSessionForClassAndSubject(kelasName, mapelName, templateSession = null) {
+  if(!localStorage.getItem('kau_access_session')){alert('Pengguna tamu hanya dapat menggunakan satu kelas. Registrasi/login untuk menambah kelas.');return;}
   const kls=String(kelasName||'').trim(),mpl=String(mapelName||'').trim();
   const duplicate=workspace.sessions.find(x=>(x.meta.kelas||'').trim()===kls&&(x.meta.mapel||'').trim()===mpl); if(duplicate){switchActiveSession(duplicate.id);return;}
   const userId=localStorage.getItem('kau_access_user_id');
@@ -1490,6 +1491,7 @@ function duplicateActiveSession() {
 }
 
 function duplicateSessionById(sesId) {
+  if(!localStorage.getItem('kau_access_session')){alert('Pengguna tamu hanya boleh memiliki satu kelas. Registrasi/login untuk duplikasi kelas.');return;}
   const src = workspace.sessions.find(s => s.id === sesId);
   if (!src) return;
   const kls = prompt('Salin ke Kelas:', src.meta.kelas);
@@ -1898,7 +1900,8 @@ function escapeAttr(v) {
 }
 
 function addStudent() {
-  if (state.students.length >= MAX_STUDENTS) return alert(`Maksimum ${MAX_STUDENTS} siswa.`);
+  const guest=!localStorage.getItem('kau_access_session'),limit=guest?10:MAX_STUDENTS;
+  if (state.students.length >= limit) return alert(`Maksimum ${limit} siswa${guest?' untuk pengguna tamu':''}. Registrasi/login untuk membuka batas.`);
   const padLen = state.config.idFieldType === 'nomor_peserta' ? state.config.idDigits : 3;
   state.students.push({
     nis: String(state.students.length + 1).padStart(padLen, '0'),
@@ -1915,12 +1918,13 @@ function deleteStudent(idx) {
 }
 
 function bulkImportStudents() {
-  const raw = prompt(`Tempel daftar nama siswa untuk ${state.meta.kelas} (1 nama per baris, maks. ${MAX_STUDENTS} siswa):`);
+  const guest=!localStorage.getItem('kau_access_session'),limit=guest?10:MAX_STUDENTS;
+  const raw = prompt(`Tempel daftar nama siswa untuk ${state.meta.kelas} (1 nama per baris, maks. ${limit} siswa):`);
   if (!raw) return;
   const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   if (lines.length === 0) return;
   const padLen = state.config.idFieldType === 'nomor_peserta' ? state.config.idDigits : 3;
-  state.students = lines.slice(0, MAX_STUDENTS).map((nama, i) => ({
+  state.students = lines.slice(0, limit).map((nama, i) => ({
     nis: String(i + 1).padStart(padLen, '0'),
     nama: nama.toUpperCase(),
     pg: '', bs: '', pgRawBlocks: null, bsRawBlocks: null,
@@ -1950,6 +1954,7 @@ function parseCSV(t) {
 }
 
 function importStudentsCSV(e) {
+  const guest=!localStorage.getItem('kau_access_session'),limit=guest?10:MAX_STUDENTS;
   const f = e.target.files && e.target.files[0];
   if (!f) return;
   const rd = new FileReader();
@@ -1971,9 +1976,9 @@ function importStudentsCSV(e) {
         ur: iu >= 0 ? (r[iu] || '').split(/[|;]/).filter(Boolean).map(Number) : [],
         remedial: ir >= 0 && r[ir] !== '' ? Number(r[ir]) : null
       })).filter(x => x.nama);
-      if (!d.length || d.length > MAX_STUDENTS) throw Error(`Jumlah siswa harus 1–${MAX_STUDENTS}`);
-      const replace = confirm(`${d.length} siswa ditemukan. OK = ganti daftar; Cancel = tambahkan (maks. ${MAX_STUDENTS}).`);
-      state.students = replace ? d : state.students.concat(d).slice(0, MAX_STUDENTS);
+      if (!d.length || d.length > limit) throw Error(`Jumlah siswa harus 1–${limit}${guest?' untuk tamu':''}`);
+      const replace = confirm(`${d.length} siswa ditemukan. OK = ganti daftar; Cancel = tambahkan (maks. ${limit}).`);
+      state.students = replace ? d.slice(0,limit) : state.students.concat(d).slice(0, limit);
       saveState();
       alert('Impor CSV berhasil dan tersimpan permanen.');
     } catch (x) {
@@ -2994,6 +2999,7 @@ async function triggerPrintPages(pagesHtml, paperSizeCss = '') {
 }
 
 async function printLJK() {
+  if(!(await kauRequireLoginForDocument()))return;
   renderLJKPreview();
   const useF4 = shouldUseF4TwoUp();
   const dataUrl1 = document.getElementById('ljkGeneratorCanvas').toDataURL('image/png');
@@ -3006,6 +3012,7 @@ async function printLJK() {
 }
 
 async function printAllStudentsLJK() {
+  if(!(await kauRequireLoginForDocument()))return;
   if (!state.students.length) return alert('Belum ada data siswa.');
   const useF4 = shouldUseF4TwoUp();
   const totalPages = useF4 ? Math.ceil(state.students.length / 2) : state.students.length;
@@ -3037,7 +3044,8 @@ async function printAllStudentsLJK() {
   }
 }
 
-function downloadLJKImage() {
+async function downloadLJKImage() {
+  if(!(await kauRequireLoginForDocument()))return;
   renderLJKPreview();
   const useF4 = shouldUseF4TwoUp();
   const suffix = useF4 ? '_F4_2LJK_HD' : '_A4_HD';
@@ -5881,12 +5889,15 @@ function buildReportHTML(repId) {
   return holder.innerHTML;
 }
 
-function renderReport() {
+async function renderReport() {
   const container = document.getElementById('reportContainer');
+  const access=await kauCheckAccess('device');
+  if(!access.allowed){container.innerHTML='<div style="padding:18px;text-align:center;color:#b91c1c">Preview Data & Analisis hanya tersedia bagi pengguna yang sudah registrasi/login akun aktif.</div>';return;}
   container.innerHTML = buildReportHTML(currentReportTab);
 }
 
 async function printCurrentReport() {
+  if(!(await kauRequireLoginForDocument()))return;
   try {
     if (!Array.isArray(state.students) || state.students.length === 0) {
       alert('Belum ada data siswa. Impor atau tambahkan data siswa terlebih dahulu sebelum mencetak laporan.');
@@ -5902,6 +5913,7 @@ async function printCurrentReport() {
 }
 
 async function printAllReports() {
+  if(!(await kauRequireLoginForDocument()))return;
   try {
     if (!Array.isArray(state.students) || state.students.length === 0) {
       alert('Belum ada data siswa. Impor atau tambahkan data siswa terlebih dahulu sebelum mencetak semua laporan.');
@@ -5941,7 +5953,8 @@ async function printAllReports() {
 }
 
 // ==================== EKSPOR EXCEL (.XLSX) LENGKAP ====================
-function exportKAUExcel() {
+async function exportKAUExcel() {
+  if(!(await kauRequireLoginForDocument()))return;
   if (typeof XLSX === 'undefined') {
     return alert('Modul Excel belum tersedia. Hubungkan perangkat ke internet, muat ulang aplikasi, lalu coba ekspor kembali.');
   }

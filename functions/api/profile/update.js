@@ -1,0 +1,2 @@
+import {json,clean,userAuth} from '../_utils.js';
+export async function onRequestPost({request,env}){try{const userId=await userAuth(request,env);if(!userId)return json({error:'Sesi login tidak valid.'},401);const b=await request.json(),nip=clean(b.headmasterNip,40);if(!nip)return json({error:'NIP Kepala Sekolah wajib diisi.'},400);await env.DB.prepare('UPDATE users SET headmaster_nip=?,updated_at=? WHERE id=?').bind(nip,Date.now(),userId).run();return json({ok:true,headmasterNip:nip})}catch{return json({error:'Gagal menyimpan profil.'},500)}}
